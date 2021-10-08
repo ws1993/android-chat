@@ -7,6 +7,7 @@ package cn.wildfire.chat.app.ptt;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
@@ -16,6 +17,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.fragment.app.FragmentActivity;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 
@@ -23,17 +25,17 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 import butterknife.OnTouch;
-import cn.wildfire.chat.app.AppService;
 import cn.wildfire.chat.kit.GlideApp;
-import cn.wildfire.chat.kit.net.SimpleCallback;
-import cn.wildfire.chat.kit.voip.VoipBaseActivity;
-import cn.wildfire.chat.kit.voip.conference.ConferenceParticipantListActivity;
-import cn.wildfirechat.avenginekit.AVEngineKit;
 import cn.wildfirechat.chat.R;
 import cn.wildfirechat.model.UserInfo;
+import cn.wildfirechat.ptt.PTTClient;
+import cn.wildfirechat.ptt.PTTSession;
+import cn.wildfirechat.ptt.PTTSessionCallback;
+import cn.wildfirechat.ptt.RequestToSpeakCallback;
 import cn.wildfirechat.remote.ChatManager;
+import cn.wildfirechat.remote.GeneralCallback;
 
-public class PttActivity extends VoipBaseActivity {
+public class PttActivity extends FragmentActivity implements PTTSessionCallback {
     private static final int REQUEST_CODE_ADD_PARTICIPANT = 103;
 
     @BindView(R.id.membersTextView)
@@ -47,52 +49,54 @@ public class PttActivity extends VoipBaseActivity {
     @BindView(R.id.talkButton)
     Button talkButton;
 
+    private String channelId;
+    private PTTSession session;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.av_ptt_activity);
         ButterKnife.bind(this);
-        updateParticipantCount();
+        channelId = getIntent().getStringExtra("channelId");
+        if (TextUtils.isEmpty(channelId)) {
+            finish();
+        } else {
+            PTTClient.getInstance().joinPttChannel(channelId, this);
+        }
     }
 
     @OnTouch(R.id.talkButton)
     public boolean talk(View button, MotionEvent event) {
-        AVEngineKit.CallSession callSession = AVEngineKit.Instance().getCurrentSession();
-        if (callSession == null) {
-            return true;
-        }
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             updateTalkButton(true);
-            callSession.requestTalk(new AVEngineKit.GeneralCallback() {
+            this.session.requestToSpeak(new RequestToSpeakCallback() {
                 @Override
-                public void onSuccess() {
+                public void onReadyToSpeak(long maxDurationMillis) {
                     String selfUid = ChatManager.Instance().getUserId();
-                    if (selfUid.equals(callSession.pttTalkingMember)) {
-                        didPttTalking(selfUid);
-                    }
+                    onPttTalking(selfUid);
                 }
 
                 @Override
-                public void onFailure(int error_code) {
-                    nameTextView.setText("抢麦失败 " + error_code);
+                public void onFail(String msg) {
+                    nameTextView.setText("对讲失败 " + msg);
+                }
+
+                @Override
+                public void onSpeakTimeOut() {
 
                 }
             });
 
         } else if (event.getAction() == MotionEvent.ACTION_UP) {
             updateTalkButton(false);
-            callSession.releaseTalk();
-            didPttIdle();
+            this.session.stopSpeak();
+            onPttIdle();
         }
         return true;
     }
 
     @OnClick(R.id.minimizeImageView)
     public void minimize() {
-        AVEngineKit.CallSession session = AVEngineKit.Instance().getCurrentSession();
-        if (session == null) {
-            return;
-        }
         String[] items;
         if (!ChatManager.Instance().getUserId().equals(session.getHost())) {
             items = new String[]{"最小化对讲机", "退出对讲机"};
@@ -107,23 +111,24 @@ public class PttActivity extends VoipBaseActivity {
                 public void onSelection(MaterialDialog dialog, View itemView, int position, CharSequence text) {
                     switch (position) {
                         case 0:
-                            finishFadeout();
+                            finish();
                             break;
                         case 1:
-                            session.leavePttChannel();
-                            finishFadeout();
+                            session.leaveChannel();
+                            finish();
                             break;
                         case 2:
-                            AppService.Instance().destroyPttChannel(session.getCallId(), new SimpleCallback<Void>() {
+                            PTTClient.getInstance().destroyPttChannel(session.getChannelId(), new GeneralCallback() {
                                 @Override
-                                public void onUiSuccess(Void unused) {
+                                public void onSuccess() {
                                     Toast.makeText(PttActivity.this, "销毁对讲频道成功", Toast.LENGTH_SHORT).show();
                                     finish();
                                 }
 
                                 @Override
-                                public void onUiFailure(int code, String msg) {
-                                    Toast.makeText(PttActivity.this, "销毁对讲频道失败 " + code, Toast.LENGTH_SHORT).show();
+                                public void onFail(int errorCode) {
+                                    Toast.makeText(PttActivity.this, "销毁对讲频道失败 " + errorCode, Toast.LENGTH_SHORT).show();
+                                    finish();
                                 }
                             });
                             break;
@@ -139,9 +144,8 @@ public class PttActivity extends VoipBaseActivity {
 
     @OnClick(R.id.membersTextView)
     public void members() {
-        isInvitingNewParticipant = true;
-        Intent intent = new Intent(this, ConferenceParticipantListActivity.class);
-        startActivityForResult(intent, REQUEST_CODE_ADD_PARTICIPANT);
+//        Intent intent = new Intent(this, ConferenceParticipantListActivity.class);
+//        startActivityForResult(intent, REQUEST_CODE_ADD_PARTICIPANT);
     }
 
     @Override
@@ -150,7 +154,6 @@ public class PttActivity extends VoipBaseActivity {
             super.onActivityResult(requestCode, resultCode, data);
         }
         if (requestCode == REQUEST_CODE_ADD_PARTICIPANT) {
-            isInvitingNewParticipant = false;
         }
     }
 
@@ -162,42 +165,43 @@ public class PttActivity extends VoipBaseActivity {
     }
 
     private void updateParticipantCount() {
-        AVEngineKit.CallSession session = AVEngineKit.Instance().getCurrentSession();
-        if (session == null) {
-            return;
-        }
-        int count = session.getParticipantIds().size() + 1;
-        membersTextView.setText("(" + count + ")");
+        // TODO
+        //int count = session.getParticipantIds().size() + 1;
+//        membersTextView.setText("(" + count + ")");
     }
 
     @Override
-    public void didPttTalking(String userId) {
-        postAction(() -> {
-            AVEngineKit.CallSession session = AVEngineKit.Instance().getCurrentSession();
-            if (session == null) {
-                return;
-            }
-            talkingMemberLayout.setVisibility(View.VISIBLE);
-            UserInfo userInfo = ChatManager.Instance().getUserInfo(userId, false);
-            GlideApp.with(this).load(userInfo.portrait).placeholder(R.mipmap.avatar_def).into(portraitImageView);
-            nameTextView.setText(userInfo.displayName);
-        });
+    public void onPointerCaptureChanged(boolean hasCapture) {
+
     }
 
     @Override
-    public void didPttIdle() {
-        postAction(() -> {
-            talkingMemberLayout.setVisibility(View.GONE);
-        });
+    public void onPttTalking(String userId) {
+        talkingMemberLayout.setVisibility(View.VISIBLE);
+        UserInfo userInfo = ChatManager.Instance().getUserInfo(userId, false);
+        GlideApp.with(this).load(userInfo.portrait).placeholder(R.mipmap.avatar_def).into(portraitImageView);
+        nameTextView.setText(userInfo.displayName);
     }
 
     @Override
-    public void didParticipantJoined(String s) {
-        postAction(this::updateParticipantCount);
+    public void onPttIdle() {
+        talkingMemberLayout.setVisibility(View.GONE);
     }
 
     @Override
-    public void didParticipantLeft(String s, AVEngineKit.CallEndReason callEndReason) {
-        postAction(this::updateParticipantCount);
+    public void onJoinSuccess(PTTSession session) {
+        this.session = session;
+    }
+
+    @Override
+    public void onJoinFail(int errorCode) {
+        Toast.makeText(this, "join ptt channel fail " + errorCode, Toast.LENGTH_SHORT).show();
+        finish();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        PTTClient.getInstance().setSessionCallback(null);
     }
 }

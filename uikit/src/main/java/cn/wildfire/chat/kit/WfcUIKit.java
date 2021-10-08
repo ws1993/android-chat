@@ -50,6 +50,7 @@ import cn.wildfirechat.message.Message;
 import cn.wildfirechat.message.core.PersistFlag;
 import cn.wildfirechat.message.notification.PCLoginRequestMessageContent;
 import cn.wildfirechat.model.Conversation;
+import cn.wildfirechat.ptt.PTTClient;
 import cn.wildfirechat.remote.ChatManager;
 import cn.wildfirechat.remote.OnDeleteMessageListener;
 import cn.wildfirechat.remote.OnFriendUpdateListener;
@@ -143,6 +144,8 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
             //AVEngineKit.MAX_AUDIO_PARTICIPANT_COUNT= 16;
             AVEngineKit.init(application, this);
             AVEngineKit.Instance().setVideoProfile(VideoProfile.VP360P, false);
+
+            PTTClient.getInstance().init(application);
 
             ChatManager.Instance().registerMessageContent(ConferenceChangeModeContent.class);
             ChatManagerHolder.gAVEngine = AVEngineKit.Instance();

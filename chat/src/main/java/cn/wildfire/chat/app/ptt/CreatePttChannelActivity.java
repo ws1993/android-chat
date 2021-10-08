@@ -7,26 +7,25 @@ package cn.wildfire.chat.app.ptt;
 import android.content.Intent;
 import android.text.Editable;
 import android.text.TextUtils;
+import android.util.Log;
 import android.widget.Button;
-import android.widget.Toast;
 
 import androidx.lifecycle.ViewModelProviders;
 
-import org.json.JSONException;
-import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
 
 import butterknife.BindView;
 import butterknife.OnClick;
 import butterknife.OnTextChanged;
-import cn.wildfire.chat.app.AppService;
 import cn.wildfire.chat.kit.WfcBaseActivity;
-import cn.wildfire.chat.kit.net.SimpleCallback;
 import cn.wildfire.chat.kit.user.UserViewModel;
 import cn.wildfire.chat.kit.widget.FixedTextInputEditText;
-import cn.wildfirechat.avenginekit.AVEngineKit;
 import cn.wildfirechat.chat.R;
 import cn.wildfirechat.model.UserInfo;
+import cn.wildfirechat.ptt.PTTClient;
 import cn.wildfirechat.remote.ChatManager;
+import cn.wildfirechat.remote.GeneralCallback2;
 
 public class CreatePttChannelActivity extends WfcBaseActivity {
     @BindView(R.id.pttTitleTextInputEditText)
@@ -81,41 +80,31 @@ public class CreatePttChannelActivity extends WfcBaseActivity {
 
     @OnClick(R.id.createPttBtn)
     public void onClickCreateBtn() {
-        String title = titleEditText.getText().toString();
-        String desc = descEditText.getText().toString();
-        PttChannelInfo info = new PttChannelInfo();
-        info.setOwner(ChatManager.Instance().getUserId());
-        info.setChannelTitle(title);
-        info.setPin("1234");
-        info.setChannelDesc(desc);
-        AppService.Instance().createPttChannel(info, new SimpleCallback<String>() {
+        List<String> members = new ArrayList<>();
+        members.add(ChatManager.Instance().getUserId());
+        //ChatManager.Instance().createGroup(null, title, null, GroupInfo.GroupType.Free, null, members, null, Collections.singletonList(1), new DummyPttNotificationMessageContent(), new GeneralCallback2() {
+        PTTClient.getInstance().createPttChannel(title, new GeneralCallback2() {
             @Override
-            public void onUiSuccess(String response) {
-                try {
-                    JSONObject object = new JSONObject(response);
-                    if (object.optInt("code", -1) == 0) {
-                        String channelId = object.getString("result");
-                        AVEngineKit.CallSession session = AVEngineKit.Instance().joinPttChannel(channelId, true, info.getPin(), info.getOwner(), info.getChannelTitle(), null);
-                        if (session != null) {
-                            Intent intent = new Intent(CreatePttChannelActivity.this, PttActivity.class);
-                            startActivity(intent);
-                        } else {
-                            Toast.makeText(CreatePttChannelActivity.this, "加入对讲失败", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                    finish();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                    Toast.makeText(CreatePttChannelActivity.this, "创建对讲频道失败", Toast.LENGTH_SHORT).show();
-                }
+            public void onSuccess(String result) {
+                Log.e("ptt", "create ptt channel success" + result);
+                Intent intent = new Intent(CreatePttChannelActivity.this, PttActivity.class);
+                intent.putExtra("pttChannelId", result);
+                startActivity(intent);
             }
 
             @Override
-            public void onUiFailure(int code, String msg) {
-                Toast.makeText(CreatePttChannelActivity.this, "创建对讲频道失败", Toast.LENGTH_SHORT).show();
+            public void onFail(int errorCode) {
+                Log.e("ptt", "create ptt channel error" + errorCode);
             }
         });
     }
 
-
+    @OnClick(R.id.joinTestChannelButton)
+    void joinTestChannel(){
+        String channelId = "wqtW0Wff";
+        Intent intent = new Intent(CreatePttChannelActivity.this, PttActivity.class);
+        intent.putExtra("channelId", channelId);
+        startActivity(intent);
+        finish();
+    }
 }

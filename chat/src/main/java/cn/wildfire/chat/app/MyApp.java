@@ -18,9 +18,11 @@ import cn.wildfire.chat.kit.Config;
 import cn.wildfire.chat.kit.WfcUIKit;
 import cn.wildfire.chat.kit.conversation.message.viewholder.MessageViewHolderManager;
 import cn.wildfire.chat.kit.third.location.viewholder.LocationMessageContentViewHolder;
+import cn.wildfirechat.ptt.message.DummyPttNotificationMessageContent;
 import cn.wildfirechat.chat.BuildConfig;
 import cn.wildfirechat.chat.R;
 import cn.wildfirechat.push.PushService;
+import cn.wildfirechat.remote.ChatManager;
 
 
 public class MyApp extends BaseApp {
@@ -47,6 +49,7 @@ public class MyApp extends BaseApp {
             wfcUIKit.setAppServiceProvider(AppService.Instance());
             PushService.init(this, BuildConfig.APPLICATION_ID);
             MessageViewHolderManager.getInstance().registerMessageViewHolder(LocationMessageContentViewHolder.class, R.layout.conversation_item_location_send, R.layout.conversation_item_location_send);
+            ChatManager.Instance().registerMessageContent(DummyPttNotificationMessageContent.class);
             setupWFCDirs();
 
             SharedPreferences sp = getSharedPreferences(Config.SP_CONFIG_FILE_NAME, Context.MODE_PRIVATE);
