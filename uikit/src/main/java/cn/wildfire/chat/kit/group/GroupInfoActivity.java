@@ -81,15 +81,15 @@ public class GroupInfoActivity extends WfcBaseActivity {
 
         List<GroupMember> groupMembers = groupViewModel.getGroupMembers(groupId, true);
         if (groupMembers == null || (groupMembers.isEmpty() && groupInfo.memberCount > 0)) {
-            showLoading();
+//            showLoading();
         } else {
             for (GroupMember member : groupMembers) {
                 if (member.type != GroupMember.GroupMemberType.Removed && member.memberId.equals(userId)) {
                     this.isJoined = true;
                 }
             }
-            updateActionButtonStatus();
         }
+        updateActionButtonStatus();
         showGroupInfo(groupInfo);
     }
 

@@ -88,8 +88,9 @@ public class CreatePttChannelActivity extends WfcBaseActivity {
             public void onSuccess(String result) {
                 Log.e("ptt", "create ptt channel success" + result);
                 Intent intent = new Intent(CreatePttChannelActivity.this, PttActivity.class);
-                intent.putExtra("pttChannelId", result);
+                intent.putExtra("channelId", result);
                 startActivity(intent);
+                finish();
             }
 
             @Override
@@ -97,14 +98,5 @@ public class CreatePttChannelActivity extends WfcBaseActivity {
                 Log.e("ptt", "create ptt channel error" + errorCode);
             }
         });
-    }
-
-    @OnClick(R.id.joinTestChannelButton)
-    void joinTestChannel(){
-        String channelId = "wqtW0Wff";
-        Intent intent = new Intent(CreatePttChannelActivity.this, PttActivity.class);
-        intent.putExtra("channelId", channelId);
-        startActivity(intent);
-        finish();
     }
 }

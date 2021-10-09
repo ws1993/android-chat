@@ -43,12 +43,4 @@
         android:enabled="false"
         android:text="创建" />
 
-    <Button
-        android:id="@+id/joinTestChannelButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="20dp"
-        android:enabled="true"
-        android:text="进入测试频道" />
-
 </LinearLayout>

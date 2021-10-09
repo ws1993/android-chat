@@ -114,6 +114,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <activity android:name="cn.wildfire.chat.app.ptt.PttParticipantListActivity" />
 
     </application>
 </manifest>

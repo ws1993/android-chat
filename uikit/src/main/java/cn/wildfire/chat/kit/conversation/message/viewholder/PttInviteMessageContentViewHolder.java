@@ -67,9 +67,8 @@ public class PttInviteMessageContentViewHolder extends NormalMessageContentViewH
         }
 //        AVEngineKit.Instance().joinPttChannel(inviteMessageContent.getCallId(), true, inviteMessageContent.getPin(), inviteMessageContent.getHost(), inviteMessageContent.getTitle(), null);
         Intent intent = new Intent(fragment.getContext().getPackageName() + ".voip.ptt");
-        String channelId = "wqtW0Wff";
+        String channelId = ((PttInviteMessageContent) message.message.content).getCallId();
         intent.putExtra("channelId", channelId);
-        Toast.makeText(fragment.getContext(), "即将进入测试频道", Toast.LENGTH_SHORT).show();
         fragment.startActivity(intent);
     }
 }

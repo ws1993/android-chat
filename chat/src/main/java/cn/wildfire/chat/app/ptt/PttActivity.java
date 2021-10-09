@@ -144,8 +144,9 @@ public class PttActivity extends FragmentActivity implements PTTSessionCallback 
 
     @OnClick(R.id.membersTextView)
     public void members() {
-//        Intent intent = new Intent(this, ConferenceParticipantListActivity.class);
-//        startActivityForResult(intent, REQUEST_CODE_ADD_PARTICIPANT);
+        Intent intent = new Intent(this, PttParticipantListActivity.class);
+        intent.putExtra("channelId", channelId);
+        startActivityForResult(intent, REQUEST_CODE_ADD_PARTICIPANT);
     }
 
     @Override
@@ -196,6 +197,11 @@ public class PttActivity extends FragmentActivity implements PTTSessionCallback 
     @Override
     public void onJoinFail(int errorCode) {
         Toast.makeText(this, "join ptt channel fail " + errorCode, Toast.LENGTH_SHORT).show();
+        finish();
+    }
+
+    @Override
+    public void onSessionEnd() {
         finish();
     }
 
