@@ -55,13 +55,18 @@ public class PttActivity extends FragmentActivity implements PTTSessionCallback 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.av_ptt_activity);
+        setContentView(R.layout.ptt_activity);
         ButterKnife.bind(this);
         channelId = getIntent().getStringExtra("channelId");
-        if (TextUtils.isEmpty(channelId)) {
-            finish();
-        } else {
+        if (!TextUtils.isEmpty(channelId)) {
             PTTClient.getInstance().joinPttChannel(channelId, this);
+        } else {
+            session = PTTClient.getInstance().getCurrentSession();
+            if (session != null) {
+                PTTClient.getInstance().setSessionCallback(this);
+            } else {
+                finish();
+            }
         }
     }
 
@@ -207,8 +212,20 @@ public class PttActivity extends FragmentActivity implements PTTSessionCallback 
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        PttService.start(this, false);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
-        PTTClient.getInstance().setSessionCallback(null);
+        PTTSession session = PTTClient.getInstance().getCurrentSession();
+        if (session != null) {
+            PTTClient.getInstance().setSessionCallback(null);
+            PttService.start(this, true);
+        } else {
+            PttService.stop(this);
+        }
     }
 }

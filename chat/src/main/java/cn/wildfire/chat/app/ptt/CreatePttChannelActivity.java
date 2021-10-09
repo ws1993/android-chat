@@ -41,7 +41,7 @@ public class CreatePttChannelActivity extends WfcBaseActivity {
 
     @Override
     protected int contentLayout() {
-        return R.layout.av_ptt_create_activity;
+        return R.layout.ptt_create_activity;
     }
 
     @Override
