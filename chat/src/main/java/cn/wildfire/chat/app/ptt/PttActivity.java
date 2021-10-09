@@ -77,8 +77,9 @@ public class PttActivity extends FragmentActivity implements PTTSessionCallback 
                 }
 
                 @Override
-                public void onFail(String msg) {
-                    nameTextView.setText("对讲失败 " + msg);
+                public void onFail(int code) {
+                    Toast.makeText(PttActivity.this, "开始说话失败 " + code, Toast.LENGTH_SHORT).show();
+                    updateTalkButton(false);
                 }
 
                 @Override

@@ -83,7 +83,7 @@ public class CreatePttChannelActivity extends WfcBaseActivity {
         List<String> members = new ArrayList<>();
         members.add(ChatManager.Instance().getUserId());
         //ChatManager.Instance().createGroup(null, title, null, GroupInfo.GroupType.Free, null, members, null, Collections.singletonList(1), new DummyPttNotificationMessageContent(), new GeneralCallback2() {
-        PTTClient.getInstance().createPttChannel(title, new GeneralCallback2() {
+        PTTClient.getInstance().createPttChannel(title, 0, new GeneralCallback2() {
             @Override
             public void onSuccess(String result) {
                 Log.e("ptt", "create ptt channel success" + result);
