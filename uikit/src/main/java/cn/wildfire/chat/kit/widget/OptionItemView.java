@@ -5,6 +5,7 @@
 package cn.wildfire.chat.kit.widget;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.os.Build;
 import android.text.TextUtils;
@@ -70,7 +71,8 @@ public class OptionItemView extends LinearLayout {
             return;
         }
 
-        boolean alignDividerToTitle = false;
+        boolean alignDividerToTitle = true;
+        boolean showDivider = true;
         TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.OptionItemView);
         for (int i = 0; i < typedArray.getIndexCount(); i++) {
             int attr = typedArray.getIndex(i);
@@ -82,6 +84,16 @@ public class OptionItemView extends LinearLayout {
                 } else {
                     startImageView.setVisibility(GONE);
                 }
+            } else if (attr == R.styleable.OptionItemView_start_tint) {
+                int color = typedArray.getColor(attr, 0);
+                if (color != 0) {
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        startImageView.setImageTintList(ColorStateList.valueOf(color));
+                    }
+                }
+            } else if (attr == R.styleable.OptionItemView_show_divider) {
+                showDivider = typedArray.getBoolean(attr, true);
             } else if (attr == R.styleable.OptionItemView_title) {
                 titleTextView.setText(typedArray.getString(attr));
             } else if (attr == R.styleable.OptionItemView_badge_count) {
@@ -108,16 +120,21 @@ public class OptionItemView extends LinearLayout {
                 boolean show = typedArray.getBoolean(attr, false);
                 arrowIndicator.setVisibility(show ? VISIBLE : GONE);
             } else if (attr == R.styleable.OptionItemView_divider_align_to_title) {
-                alignDividerToTitle = typedArray.getBoolean(attr, false);
+                alignDividerToTitle = typedArray.getBoolean(attr, true);
             }
         }
 
-        if (alignDividerToTitle) {
-            LayoutParams layoutParams = (LayoutParams) dividerView.getLayoutParams();
-            int margin = startImageView.getVisibility() == VISIBLE ? 72 : 16;
-            layoutParams.leftMargin = dp2px(margin);
-            dividerView.setLayoutParams(layoutParams);
-            dividerView.invalidate();
+        if (showDivider) {
+            dividerView.setVisibility(VISIBLE);
+            if (alignDividerToTitle) {
+                LayoutParams layoutParams = (LayoutParams) dividerView.getLayoutParams();
+                int margin = startImageView.getVisibility() == VISIBLE ? 52 : 16;
+                layoutParams.leftMargin = dp2px(margin);
+                dividerView.setLayoutParams(layoutParams);
+                dividerView.invalidate();
+            }
+        } else {
+            dividerView.setVisibility(GONE);
         }
 
         if (!TextUtils.isEmpty(title)) {

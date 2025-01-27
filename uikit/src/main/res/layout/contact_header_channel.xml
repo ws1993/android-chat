@@ -2,13 +2,12 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/white"
     android:orientation="vertical">
 
     <LinearLayout
         android:id="@+id/llGroup"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
+        android:layout_height="56dp"
         android:layout_gravity="center_vertical"
         android:background="@drawable/selector_common_item"
         android:gravity="center_vertical"
@@ -58,8 +57,8 @@
     </LinearLayout>
 
     <View
-        android:visibility="gone"
         style="@style/Line"
-        android:layout_marginLeft="68dp" />
+        android:layout_marginLeft="68dp"
+        android:visibility="visible" />
 
 </LinearLayout>

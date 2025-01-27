@@ -4,6 +4,8 @@
 
 package cn.wildfire.chat.kit.conversation.ext;
 
+import static android.app.Activity.RESULT_OK;
+
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
@@ -23,8 +25,6 @@ import cn.wildfire.chat.kit.third.utils.ImageUtils;
 import cn.wildfirechat.message.TypingMessageContent;
 import cn.wildfirechat.model.Conversation;
 
-import static android.app.Activity.RESULT_OK;
-
 public class ShootExt extends ConversationExt {
 
     /**
@@ -43,7 +43,7 @@ public class ShootExt extends ConversationExt {
         Intent intent = new Intent(activity, TakePhotoActivity.class);
         startActivityForResult(intent, 100);
         TypingMessageContent content = new TypingMessageContent(TypingMessageContent.TYPING_CAMERA);
-        messageViewModel.sendMessage(conversation, content);
+        messageViewModel.sendMessage(conversation, toUsers(), content);
     }
 
     @Override
@@ -56,10 +56,14 @@ public class ShootExt extends ConversationExt {
             }
             if (data.getBooleanExtra("take_photo", true)) {
                 //照片
-                messageViewModel.sendImgMsg(conversation, ImageUtils.genThumbImgFile(path), new File(path));
+                File file = new File(path);
+                messageViewModel.sendImgMsg(conversation, toUsers(), ImageUtils.genThumbImgFile(path), file);
+                ImageUtils.saveMedia2Album(fragment.getContext(), file, true);
             } else {
                 //小视频
-                messageViewModel.sendVideoMsg(conversation, new File(path));
+                File file = new File(path);
+                messageViewModel.sendVideoMsg(conversation, toUsers(), new File(path));
+                ImageUtils.saveMedia2Album(fragment.getContext(), file, false);
             }
         }
     }

@@ -10,26 +10,37 @@ import android.os.Build;
 import android.view.View;
 
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.WfcBaseActivity;
 import cn.wildfire.chat.kit.WfcUIKit;
 import cn.wildfire.chat.kit.annotation.ExtContextMenuItem;
 import cn.wildfire.chat.kit.conversation.ConversationFragment;
 import cn.wildfire.chat.kit.conversation.ext.core.ConversationExt;
 import cn.wildfirechat.avenginekit.AVEngineKit;
 import cn.wildfirechat.model.Conversation;
-import cn.wildfirechat.model.UserInfo;
-import cn.wildfirechat.remote.ChatManager;
 
 public class VoipExt extends ConversationExt {
+//    private String targetId;
 
     @ExtContextMenuItem(tag = ConversationExtMenuTags.TAG_VOIP_VIDEO)
     public void video(View containerView, Conversation conversation) {
-        String[] permissions = new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA};
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!((WfcBaseActivity) activity).checkPermission(permissions)) {
-                activity.requestPermissions(permissions, 100);
-                return;
+        String[] permissions;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            permissions = new String[]{
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.CAMERA,
+                Manifest.permission.BLUETOOTH_CONNECT
+            };
+        } else {
+            permissions = new String[]{
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.CAMERA
+            };
+        }
+        String[] notGrantedPermissions = checkPermissions(permissions);
+        if (notGrantedPermissions.length > 0) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                activity.requestPermissions(notGrantedPermissions, 100);
             }
+            return;
         }
         switch (conversation.type) {
             case Single:
@@ -45,10 +56,21 @@ public class VoipExt extends ConversationExt {
 
     @ExtContextMenuItem(tag = ConversationExtMenuTags.TAG_VOIP_AUDIO)
     public void audio(View containerView, Conversation conversation) {
-        String[] permissions = new String[]{Manifest.permission.RECORD_AUDIO};
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!((WfcBaseActivity) activity).checkPermission(permissions)) {
-                activity.requestPermissions(permissions, 100);
+        String[] permissions;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            permissions = new String[]{
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.BLUETOOTH_CONNECT
+            };
+        } else {
+            permissions = new String[]{
+                Manifest.permission.RECORD_AUDIO
+            };
+        }
+        String[] notGrantedPermissions = checkPermissions(permissions);
+        if (notGrantedPermissions.length > 0) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                activity.requestPermissions(notGrantedPermissions, 100);
                 return;
             }
         }
@@ -66,7 +88,19 @@ public class VoipExt extends ConversationExt {
 
     private void audioChat(String targetId) {
         WfcUIKit.singleCall(activity, targetId, true);
+        // 下面是开始录制系统音频的示例代码
+//        this.targetId = targetId;
+//        MediaProjectionManager mediaProjectionManager = (MediaProjectionManager) fragment.getActivity().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+//        startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), 102);
     }
+
+//    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+//        WfcUIKit.singleCall(activity, targetId, true);
+//        Intent intent = new Intent(fragment.getContext(), VoipCallService.class);
+//        intent.putExtra("screenShareForSystemAudioRecord", true);
+//        intent.putExtra("data", data);
+//        VoipCallService.start(fragment.getContext(), intent);
+//    }
 
     private void videoChat(String targetId) {
         WfcUIKit.singleCall(activity, targetId, false);
@@ -89,11 +123,11 @@ public class VoipExt extends ConversationExt {
         }
 
         if (conversation.type == Conversation.ConversationType.Single) {
-            UserInfo userInfo = ChatManager.Instance().getUserInfo(conversation.target, false);
-            // robot
-            if (userInfo.type == 1) {
-                return true;
-            }
+//            UserInfo userInfo = ChatManager.Instance().getUserInfo(conversation.target, false);
+//            // robot
+//            if (userInfo.type == 1) {
+//                return true;
+//            }
             return false;
         }
         return true;

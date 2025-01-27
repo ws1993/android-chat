@@ -2,13 +2,12 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/white"
     android:orientation="vertical">
 
     <LinearLayout
         android:id="@+id/llGroup"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
+        android:layout_height="56dp"
         android:layout_gravity="center_vertical"
         android:background="@drawable/selector_common_item"
         android:gravity="center_vertical"
@@ -53,6 +52,13 @@
             android:textColor="@color/black1"
             android:textSize="16sp" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="6dp"
+            android:text="(保存到通讯录的群组)"
+            android:textColor="@color/gray0"
+            android:textSize="11sp" />
     </LinearLayout>
 
     <View

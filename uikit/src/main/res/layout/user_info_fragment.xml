@@ -11,7 +11,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/selector_common_item"
+        android:gravity="center_vertical"
         android:paddingLeft="16dp"
+        android:paddingTop="16dp"
         android:paddingRight="16dp"
         android:paddingBottom="16dp">
 
@@ -19,7 +21,6 @@
             android:id="@+id/portraitImageView"
             android:layout_width="60dp"
             android:layout_height="60dp"
-            android:layout_marginTop="14dp"
             android:scaleType="centerCrop"
             android:src="@mipmap/avatar_def" />
 
@@ -27,7 +28,6 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginLeft="18dp"
-            android:layout_marginTop="18dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -65,6 +65,7 @@
                 android:text="@string/nickname_colon"
                 android:textColor="@color/black1"
                 android:textSize="14sp" />
+
             <TextView
                 android:id="@+id/groupAliasTextView"
                 android:layout_width="wrap_content"
@@ -73,6 +74,7 @@
                 android:text="@string/nickname_colon"
                 android:textColor="@color/black1"
                 android:textSize="14sp" />
+
             <TextView
                 android:id="@+id/accountTextView"
                 android:layout_width="wrap_content"
@@ -82,6 +84,15 @@
                 android:textColor="@color/black1"
                 android:textSize="14sp" />
 
+            <TextView
+                android:id="@+id/externalDomainTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:text="组织"
+                android:textColor="@color/black1"
+                android:textSize="14sp"
+                android:visibility="gone" />
 
         </LinearLayout>
 
@@ -89,14 +100,15 @@
             android:id="@+id/favContactTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="20sp"
-            android:textStyle="bold"
             android:layout_marginTop="10dp"
             android:text="☆"
-            android:textColor="#FDBE2D" />
+            android:textColor="#FDBE2D"
+            android:textSize="20sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <View style="@style/Line" />
+
     <cn.wildfire.chat.kit.widget.OptionItemView
         android:id="@+id/aliasOptionItemView"
         style="@style/OptionItem"
@@ -104,21 +116,43 @@
         app:show_arrow_indicator="true"
         app:title="设置昵称或别名" />
 
-    <View style="@style/Line" />
-    <cn.wildfire.chat.kit.widget.OptionItemView
-        android:id="@+id/messagesOptionItemView"
-        style="@style/OptionItem"
-        android:background="@drawable/selector_common_item"
-        app:show_arrow_indicator="true"
-        android:layout_marginTop="8dp"
-        app:title="查看他（她）的消息" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@color/white"
+        android:orientation="vertical">
+
+        <cn.wildfire.chat.kit.widget.OptionItemView
+            android:id="@+id/orgOptionItemView"
+            style="@style/OptionItem"
+            android:background="@drawable/selector_common_item"
+            android:visibility="gone"
+            app:desc="前端研发组"
+            app:show_arrow_indicator="true"
+            app:title="部门" />
+
+        <cn.wildfire.chat.kit.widget.OptionItemView
+            android:id="@+id/groupMemberSourceOptionItemView"
+            style="@style/OptionItem"
+            android:clickable="true"
+            app:desc="扫码进群"
+            app:show_arrow_indicator="false"
+            app:title="进群方式" />
+
+        <cn.wildfire.chat.kit.widget.OptionItemView
+            android:id="@+id/messagesOptionItemView"
+            style="@style/OptionItem"
+            app:show_arrow_indicator="true"
+            app:title="查看他（她）的消息" />
+
+    </LinearLayout>
 
 
     <cn.wildfire.chat.kit.widget.OptionItemView
         android:id="@+id/qrCodeOptionItemView"
         style="@style/OptionItem"
         android:layout_marginTop="20dp"
-        android:background="@drawable/selector_common_item"
         android:visibility="gone"
         app:end_src="@mipmap/qr_code"
         app:title="二维码" />
@@ -134,7 +168,7 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="70dp"
+            android:layout_height="56dp"
             android:background="@drawable/selector_common_item"
             android:gravity="center_vertical"
             android:paddingLeft="16dp">
@@ -142,7 +176,6 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@color/white"
                 android:text="朋友圈"
                 android:textColor="@color/black1"
                 android:textSize="16sp" />

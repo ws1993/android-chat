@@ -6,9 +6,7 @@ package cn.wildfire.chat.app.login;
 
 import static cn.wildfire.chat.app.BaseApp.getContext;
 
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextUtils;
@@ -20,24 +18,43 @@ import androidx.core.app.ActivityOptionsCompat;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 
-import butterknife.BindView;
-import butterknife.OnClick;
-import butterknife.OnTextChanged;
 import cn.wildfire.chat.app.AppService;
 import cn.wildfire.chat.app.login.model.LoginResult;
 import cn.wildfire.chat.app.main.MainActivity;
+import cn.wildfire.chat.app.misc.KeyStoreUtil;
 import cn.wildfire.chat.kit.ChatManagerHolder;
-import cn.wildfire.chat.kit.Config;
 import cn.wildfire.chat.kit.WfcBaseNoToolbarActivity;
+import cn.wildfire.chat.kit.widget.SimpleTextWatcher;
 import cn.wildfirechat.chat.R;
 
 public class LoginActivity extends WfcBaseNoToolbarActivity {
-    @BindView(R.id.loginButton)
     Button loginButton;
-    @BindView(R.id.phoneNumberEditText)
     EditText accountEditText;
-    @BindView(R.id.passwordEditText)
     EditText passwordEditText;
+
+    private void bindEvents() {
+        findViewById(R.id.authCodeLoginTextView).setOnClickListener(v -> authCodeLogin());
+        findViewById(R.id.registerTextView).setOnClickListener(v -> register());
+        findViewById(R.id.loginButton).setOnClickListener(v -> login());
+        accountEditText.addTextChangedListener(new SimpleTextWatcher() {
+            @Override
+            public void afterTextChanged(Editable s) {
+                inputAccount(s);
+            }
+        });
+        passwordEditText.addTextChangedListener(new SimpleTextWatcher() {
+            @Override
+            public void afterTextChanged(Editable s) {
+                inputPassword(s);
+            }
+        });
+    }
+
+    private void bindViews() {
+        loginButton = findViewById(R.id.loginButton);
+        accountEditText = findViewById(R.id.phoneNumberEditText);
+        passwordEditText = findViewById(R.id.passwordEditText);
+    }
 
     @Override
     protected int contentLayout() {
@@ -46,6 +63,8 @@ public class LoginActivity extends WfcBaseNoToolbarActivity {
 
     @Override
     protected void afterViews() {
+        bindViews();
+        bindEvents();
         setStatusBarTheme(this, false);
         setStatusBarColor(R.color.gray14);
         if (getIntent().getBooleanExtra("isKickedOff", false)) {
@@ -57,7 +76,6 @@ public class LoginActivity extends WfcBaseNoToolbarActivity {
         }
     }
 
-    @OnTextChanged(value = R.id.phoneNumberEditText, callback = OnTextChanged.Callback.AFTER_TEXT_CHANGED)
     void inputAccount(Editable editable) {
         if (!TextUtils.isEmpty(passwordEditText.getText()) && !TextUtils.isEmpty(editable)) {
             loginButton.setEnabled(true);
@@ -66,7 +84,6 @@ public class LoginActivity extends WfcBaseNoToolbarActivity {
         }
     }
 
-    @OnTextChanged(value = R.id.passwordEditText, callback = OnTextChanged.Callback.AFTER_TEXT_CHANGED)
     void inputPassword(Editable editable) {
         if (!TextUtils.isEmpty(accountEditText.getText()) && !TextUtils.isEmpty(editable)) {
             loginButton.setEnabled(true);
@@ -75,14 +92,12 @@ public class LoginActivity extends WfcBaseNoToolbarActivity {
         }
     }
 
-    @OnClick(R.id.authCodeLoginTextView)
     void authCodeLogin() {
         Intent intent = new Intent(this, SMSLoginActivity.class);
         startActivity(intent);
         finish();
     }
 
-    @OnClick(R.id.registerTextView)
     void register() {
         MaterialDialog dialog = new MaterialDialog.Builder(this)
             .title("提示")
@@ -101,7 +116,6 @@ public class LoginActivity extends WfcBaseNoToolbarActivity {
         dialog.show();
     }
 
-    @OnClick(R.id.loginButton)
     void login() {
 
         String account = accountEditText.getText().toString().trim();
@@ -123,11 +137,12 @@ public class LoginActivity extends WfcBaseNoToolbarActivity {
 
                 //需要注意token跟clientId是强依赖的，一定要调用getClientId获取到clientId，然后用这个clientId获取token，这样connect才能成功，如果随便使用一个clientId获取到的token将无法链接成功。
                 ChatManagerHolder.gChatManager.connect(loginResult.getUserId(), loginResult.getToken());
-                SharedPreferences sp = getSharedPreferences(Config.SP_CONFIG_FILE_NAME, Context.MODE_PRIVATE);
-                sp.edit()
-                    .putString("id", loginResult.getUserId())
-                    .putString("token", loginResult.getToken())
-                    .apply();
+                try {
+                    KeyStoreUtil.saveData(LoginActivity.this, "wf_userId", loginResult.getUserId());
+                    KeyStoreUtil.saveData(LoginActivity.this, "wf_token", loginResult.getToken());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
                 Intent intent = new Intent(LoginActivity.this, MainActivity.class);
                 intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 startActivity(intent);

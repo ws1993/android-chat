@@ -11,18 +11,22 @@ import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
+import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
+
+import com.bumptech.glide.Glide;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import cn.wildfire.chat.kit.ChatManagerHolder;
-import cn.wildfire.chat.kit.GlideApp;
 import cn.wildfire.chat.kit.R;
 import cn.wildfire.chat.kit.common.OperateResult;
 import cn.wildfire.chat.kit.contact.model.UIUserInfo;
@@ -30,8 +34,10 @@ import cn.wildfire.chat.kit.third.utils.FileUtils;
 import cn.wildfire.chat.kit.user.UserViewModel;
 import cn.wildfire.chat.kit.utils.PinyinUtils;
 import cn.wildfire.chat.kit.utils.portrait.CombineBitmapTools;
+import cn.wildfirechat.message.Message;
 import cn.wildfirechat.message.MessageContent;
 import cn.wildfirechat.message.MessageContentMediaType;
+import cn.wildfirechat.message.notification.ModifyGroupSettingsNotificationContent;
 import cn.wildfirechat.message.notification.NotificationMessageContent;
 import cn.wildfirechat.model.GroupInfo;
 import cn.wildfirechat.model.GroupMember;
@@ -40,12 +46,16 @@ import cn.wildfirechat.model.UserInfo;
 import cn.wildfirechat.remote.ChatManager;
 import cn.wildfirechat.remote.GeneralCallback;
 import cn.wildfirechat.remote.GeneralCallback2;
+import cn.wildfirechat.remote.GetGroupMembersCallback;
 import cn.wildfirechat.remote.GetGroupsCallback;
+import cn.wildfirechat.remote.GetUserInfoListCallback;
 import cn.wildfirechat.remote.OnGroupInfoUpdateListener;
 import cn.wildfirechat.remote.OnGroupMembersUpdateListener;
+import cn.wildfirechat.remote.OnReceiveMessageListener;
 import cn.wildfirechat.remote.UploadMediaCallback;
+import cn.wildfirechat.utils.WfcUtils;
 
-public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListener, OnGroupMembersUpdateListener {
+public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListener, OnGroupMembersUpdateListener, OnReceiveMessageListener {
     private MutableLiveData<List<GroupInfo>> groupInfoUpdateLiveData;
     private MutableLiveData<List<GroupMember>> groupMembersUpdateLiveData;
 
@@ -53,12 +63,14 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         super();
         ChatManager.Instance().addGroupInfoUpdateListener(this);
         ChatManager.Instance().addGroupMembersUpdateListener(this);
+        ChatManager.Instance().addOnReceiveMessageListener(this);
     }
 
     @Override
     protected void onCleared() {
         ChatManager.Instance().removeGroupInfoUpdateListener(this);
         ChatManager.Instance().removeGroupMembersUpdateListener(this);
+        ChatManager.Instance().removeOnReceiveMessageListener(this);
     }
 
     public MutableLiveData<List<GroupInfo>> groupInfoUpdateLiveData() {
@@ -77,29 +89,47 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
 
     public MutableLiveData<List<UIUserInfo>> getGroupMemberUIUserInfosLiveData(String groupId, boolean refresh) {
         MutableLiveData<List<UIUserInfo>> groupMemberLiveData = new MutableLiveData<>();
-        ChatManager.Instance().getWorkHandler().post(() -> {
-            List<GroupMember> members = ChatManager.Instance().getGroupMembers(groupId, refresh);
-            List<String> memberIds = new ArrayList<>(members.size());
-            for (GroupMember member : members) {
-                memberIds.add(member.memberId);
+        ChatManager.Instance().getGroupMemberUserInfosAsync(groupId, refresh, new GetUserInfoListCallback() {
+            @Override
+            public void onSuccess(List<UserInfo> userInfos) {
+                List<UIUserInfo> users = UIUserInfo.fromUserInfos(userInfos);
+                groupMemberLiveData.postValue(users);
             }
-            List<UserInfo> userInfos = ChatManager.Instance().getUserInfos(memberIds, groupId);
-            List<UIUserInfo> users = UIUserInfo.fromUserInfos(userInfos);
-            groupMemberLiveData.postValue(users);
+
+            @Override
+            public void onFail(int errorCode) {
+
+            }
         });
         return groupMemberLiveData;
     }
 
     public MutableLiveData<List<UserInfo>> getGroupMemberUserInfosLiveData(String groupId, boolean refresh) {
+
+        return getGroupMemberUserInfosLiveData(groupId, refresh, Long.MAX_VALUE);
+    }
+
+    public MutableLiveData<List<UserInfo>> getGroupMemberUserInfosLiveData(String groupId, boolean refresh, long joinBeforeDt) {
         MutableLiveData<List<UserInfo>> groupMemberLiveData = new MutableLiveData<>();
-        ChatManager.Instance().getWorkHandler().post(() -> {
-            List<GroupMember> members = ChatManager.Instance().getGroupMembers(groupId, refresh);
-            List<String> memberIds = new ArrayList<>(members.size());
-            for (GroupMember member : members) {
-                memberIds.add(member.memberId);
+        ChatManager.Instance().getGroupMembers(groupId, refresh, new GetGroupMembersCallback() {
+            @Override
+            public void onSuccess(List<GroupMember> groupMembers) {
+                List<String> memberIds = new ArrayList<>(groupMembers.size());
+                for (GroupMember member : groupMembers) {
+                    if (member.createDt <= joinBeforeDt) {
+                        memberIds.add(member.memberId);
+                    }
+                }
+                ChatManager.Instance().getWorkHandler().post(() -> {
+                    List<UserInfo> userInfos = ChatManager.Instance().getUserInfos(memberIds, groupId);
+                    groupMemberLiveData.postValue(userInfos);
+                });
             }
-            List<UserInfo> userInfos = ChatManager.Instance().getUserInfos(memberIds, groupId);
-            groupMemberLiveData.postValue(userInfos);
+
+            @Override
+            public void onFail(int errorCode) {
+                groupMemberLiveData.postValue(new ArrayList<>());
+            }
         });
         return groupMemberLiveData;
     }
@@ -112,6 +142,10 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
     }
 
     public MutableLiveData<OperateResult<String>> createGroup(Context context, List<UserInfo> checkedUsers, MessageContent notifyMsg, List<Integer> lines) {
+        return createGroup(context, checkedUsers, notifyMsg, lines, null, null);
+    }
+
+    public MutableLiveData<OperateResult<String>> createGroup(Context context, List<UserInfo> checkedUsers, MessageContent notifyMsg, List<Integer> lines, String groupExra, String memberExtra) {
         List<String> selectedIds = new ArrayList<>(checkedUsers.size());
         List<UserInfo> selectedUsers = new ArrayList<>();
         for (UserInfo userInfo : checkedUsers) {
@@ -136,7 +170,7 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
 
         MutableLiveData<OperateResult<String>> groupLiveData = new MutableLiveData<>();
         String finalGroupName = groupName;
-        ChatManager.Instance().createGroup(null, finalGroupName, null, GroupInfo.GroupType.Restricted, null, selectedIds, null, lines, notifyMsg, new GeneralCallback2() {
+        ChatManager.Instance().createGroup(null, finalGroupName, null, GroupInfo.GroupType.Restricted, groupExra, selectedIds, memberExtra, lines, notifyMsg, new GeneralCallback2() {
             @Override
             public void onSuccess(String groupId) {
                 groupLiveData.setValue(new OperateResult<>(groupId, 0));
@@ -151,9 +185,13 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
     }
 
     public MutableLiveData<Boolean> addGroupMember(GroupInfo groupInfo, List<String> memberIds, MessageContent notifyMsg, List<Integer> notifyLines) {
+        return addGroupMember(groupInfo, memberIds, notifyMsg, notifyLines, null);
+    }
+
+    public MutableLiveData<Boolean> addGroupMember(GroupInfo groupInfo, List<String> memberIds, MessageContent notifyMsg, List<Integer> notifyLines, String memberExtra) {
         MutableLiveData<Boolean> result = new MutableLiveData<>();
         // TODO need update group portrait or not?
-        ChatManager.Instance().addGroupMembers(groupInfo.target, memberIds, null, notifyLines, notifyMsg, new GeneralCallback() {
+        ChatManager.Instance().addGroupMembers(groupInfo.target, memberIds, memberExtra, notifyLines, notifyMsg, new GeneralCallback() {
             @Override
             public void onSuccess() {
                 result.setValue(true);
@@ -206,12 +244,12 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         ChatManager.Instance().muteGroupMember(groupId, mute, memberIds, lines, notifyMsg, new GeneralCallback() {
             @Override
             public void onSuccess() {
-                result.setValue(new OperateResult<>(0));
+                result.setValue(new OperateResult<>(true, 0));
             }
 
             @Override
             public void onFail(int errorCode) {
-                result.setValue(new OperateResult<>(errorCode));
+                result.setValue(new OperateResult<>(false, errorCode));
             }
         });
         return result;
@@ -222,12 +260,12 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         ChatManager.Instance().allowGroupMember(groupId, allow, memberIds, lines, notifyMsg, new GeneralCallback() {
             @Override
             public void onSuccess() {
-                result.setValue(new OperateResult<>(0));
+                result.setValue(new OperateResult<>(true, 0));
             }
 
             @Override
             public void onFail(int errorCode) {
-                result.setValue(new OperateResult<>(errorCode));
+                result.setValue(new OperateResult<>(false, errorCode));
             }
         });
         return result;
@@ -313,22 +351,29 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         return result;
     }
 
-    public @Nullable
-    GroupInfo getGroupInfo(String groupId, boolean refresh) {
+    public @Nullable GroupInfo getGroupInfo(String groupId, boolean refresh) {
         return ChatManager.Instance().getGroupInfo(groupId, refresh);
+    }
+
+    public LiveData<GroupInfo> getGroupInfoAsync(String groupId, boolean refresh) {
+        MutableLiveData<GroupInfo> data = new MutableLiveData<>();
+        ChatManager.Instance().getWorkHandler().post(() -> {
+            GroupInfo groupInfo = ChatManager.Instance().getGroupInfo(groupId, refresh);
+            data.postValue(groupInfo);
+        });
+        return data;
     }
 
     public List<GroupMember> getGroupMembers(String groupId, boolean forceRefresh) {
         return ChatManager.Instance().getGroupMembers(groupId, forceRefresh);
     }
 
-    public MutableLiveData<List<GroupMember>> getGroupMembersLiveData(String groupId, boolean refresh) {
+    public MutableLiveData<List<GroupMember>> getGroupMembersLiveData(String groupId, int maxCount) {
         MutableLiveData<List<GroupMember>> data = new MutableLiveData<>();
         ChatManager.Instance().getWorkHandler().post(() -> {
-            List<GroupMember> members = ChatManager.Instance().getGroupMembers(groupId, refresh);
-            data.postValue(members);
+            List<GroupMember> groupMembers = ChatManager.Instance().getGroupMembersByCount(groupId, maxCount);
+            data.postValue(groupMembers);
         });
-
         return data;
     }
 
@@ -502,6 +547,15 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         return ChatManager.Instance().getGroupMemberDisplayName(groupId, memberId);
     }
 
+    public CharSequence getGroupMemberDisplayNameEx(String groupId, String memberId, int spanFontSize) {
+        String displayName = ChatManager.Instance().getGroupMemberDisplayName(groupId, memberId);
+        if (WfcUtils.isExternalTarget(memberId)) {
+            return WfcUtils.buildExternalDisplayNameSpannableString(displayName, spanFontSize);
+        } else {
+            return displayName;
+        }
+    }
+
     public MutableLiveData<OperateResult<List<GroupInfo>>> getFavGroups() {
         MutableLiveData<OperateResult<List<GroupInfo>>> result = new MutableLiveData<>();
         ChatManager.Instance().getFavGroups(new GetGroupsCallback() {
@@ -655,10 +709,10 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         for (UserInfo userInfo : userInfos) {
             Drawable drawable;
             try {
-                drawable = GlideApp.with(context).load(userInfo.portrait).placeholder(R.mipmap.avatar_def).submit(60, 60).get();
+                drawable = Glide.with(context).load(userInfo.portrait).placeholder(R.mipmap.avatar_def).submit(60, 60).get();
             } catch (Exception e) {
                 e.printStackTrace();
-                drawable = GlideApp.with(context).load(R.mipmap.avatar_def).submit(60, 60).get();
+                drawable = Glide.with(context).load(R.mipmap.avatar_def).submit(60, 60).get();
             }
             if (drawable instanceof BitmapDrawable) {
                 bitmaps.add(((BitmapDrawable) drawable).getBitmap());
@@ -693,4 +747,16 @@ public class GroupViewModel extends ViewModel implements OnGroupInfoUpdateListen
         }
     }
 
+    @Override
+    public void onReceiveMessage(List<Message> messages, boolean hasMore) {
+        Set<String> groupIds = new HashSet<>();
+        for (Message msg : messages) {
+            if (msg.content instanceof ModifyGroupSettingsNotificationContent) {
+                groupIds.add(((ModifyGroupSettingsNotificationContent) msg.content).groupId);
+            }
+        }
+        if (groupIds.size() > 0) {
+            ChatManager.Instance().getGroupInfos(new ArrayList<>(groupIds), true);
+        }
+    }
 }

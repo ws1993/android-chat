@@ -19,15 +19,13 @@ import com.bumptech.glide.request.RequestOptions;
 import java.util.Iterator;
 import java.util.List;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
-import butterknife.OnClick;
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.R2;
 import cn.wildfirechat.model.Conversation;
 import cn.wildfirechat.model.ConversationInfo;
+import cn.wildfirechat.model.DomainInfo;
 import cn.wildfirechat.model.UserInfo;
 import cn.wildfirechat.remote.ChatManager;
+import cn.wildfirechat.utils.WfcUtils;
 
 public class ConversationMemberAdapter extends RecyclerView.Adapter<ConversationMemberAdapter.MemberViewHolder> {
     private List<UserInfo> members;
@@ -127,17 +125,15 @@ public class ConversationMemberAdapter extends RecyclerView.Adapter<Conversation
     }
 
     class MemberViewHolder extends RecyclerView.ViewHolder {
-        @BindView(R2.id.portraitImageView)
         ImageView portraitImageView;
-        @BindView(R2.id.nameTextView)
         TextView nameTextView;
+        TextView externalDomainTextView;
         private UserInfo userInfo;
         private int type = TYPE_USER;
         private static final int TYPE_USER = 0;
         private static final int TYPE_ADD = 1;
         private static final int TYPE_REMOVE = 2;
 
-        @OnClick(R2.id.portraitImageView)
         void onClick() {
             if (onMemberClickListener == null) {
                 return;
@@ -161,7 +157,18 @@ public class ConversationMemberAdapter extends RecyclerView.Adapter<Conversation
 
         public MemberViewHolder(View itemView) {
             super(itemView);
-            ButterKnife.bind(this, itemView);
+            bindViews(itemView);
+            bindEvents(itemView);
+        }
+
+        private void bindViews(View itemView) {
+            portraitImageView = itemView.findViewById(R.id.portraitImageView);
+            nameTextView = itemView.findViewById(R.id.nameTextView);
+            externalDomainTextView = itemView.findViewById(R.id.externalDomainTextView);
+        }
+
+        private void bindEvents(View itemView) {
+            itemView.findViewById(R.id.portraitImageView).setOnClickListener(_v -> onClick());
         }
 
         public void bindUserInfo(UserInfo userInfo) {
@@ -177,6 +184,16 @@ public class ConversationMemberAdapter extends RecyclerView.Adapter<Conversation
                 nameTextView.setText(ChatManager.Instance().getGroupMemberDisplayName(conversationInfo.conversation.target, userInfo.uid));
             } else {
                 nameTextView.setText(ChatManager.Instance().getUserDisplayName(userInfo.uid));
+            }
+
+            String externalDomainId = WfcUtils.getExternalDomainId(userInfo.uid);
+            externalDomainTextView.setVisibility(View.GONE);
+            if (externalDomainId != null) {
+                DomainInfo domainInfo = ChatManager.Instance().getDomainInfo(externalDomainId, false);
+                if (domainInfo != null) {
+                    externalDomainTextView.setVisibility(View.VISIBLE);
+                    externalDomainTextView.setText("@" + domainInfo.name);
+                }
             }
             Glide.with(portraitImageView).load(userInfo.portrait).apply(new RequestOptions().centerCrop().placeholder(R.mipmap.avatar_def)).into(portraitImageView);
         }

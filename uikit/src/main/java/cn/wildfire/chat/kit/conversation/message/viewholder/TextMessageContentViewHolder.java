@@ -8,6 +8,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.text.Html;
+import android.text.Spanned;
 import android.text.style.ImageSpan;
 import android.view.View;
 import android.widget.TextView;
@@ -16,9 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.lqr.emoji.MoonUtils;
 
-import butterknife.BindView;
-import butterknife.OnClick;
-import cn.wildfire.chat.kit.R2;
+import cn.wildfire.chat.kit.*;
 import cn.wildfire.chat.kit.WfcWebViewActivity;
 import cn.wildfire.chat.kit.annotation.EnableContextMenu;
 import cn.wildfire.chat.kit.annotation.MessageContentType;
@@ -34,6 +33,7 @@ import cn.wildfirechat.message.MessageContent;
 import cn.wildfirechat.message.PTextMessageContent;
 import cn.wildfirechat.message.TextMessageContent;
 import cn.wildfirechat.message.VideoMessageContent;
+import cn.wildfirechat.message.notification.RecallMessageContent;
 import cn.wildfirechat.model.QuoteInfo;
 import cn.wildfirechat.remote.ChatManager;
 
@@ -45,15 +45,25 @@ import cn.wildfirechat.remote.ChatManager;
 })
 @EnableContextMenu
 public class TextMessageContentViewHolder extends NormalMessageContentViewHolder {
-    @BindView(R2.id.contentTextView)
     TextView contentTextView;
-    @BindView(R2.id.refTextView)
     TextView refTextView;
 
     private QuoteInfo quoteInfo;
 
     public TextMessageContentViewHolder(ConversationFragment fragment, RecyclerView.Adapter adapter, View itemView) {
         super(fragment, adapter, itemView);
+        bindViews(itemView);
+        bindEvents(itemView);
+    }
+
+    private void bindEvents(View itemView) {
+        itemView.findViewById(R.id.contentTextView).setOnClickListener(this::onClick);
+        itemView.findViewById(R.id.refTextView).setOnClickListener(this::onRefClick);
+    }
+
+    private void bindViews(View itemView) {
+        contentTextView = itemView.findViewById(R.id.contentTextView);
+        refTextView = itemView.findViewById(R.id.refTextView);
     }
 
     @Override
@@ -61,7 +71,17 @@ public class TextMessageContentViewHolder extends NormalMessageContentViewHolder
         TextMessageContent textMessageContent = (TextMessageContent) message.message.content;
         String content = textMessageContent.getContent();
         if (content.startsWith("<") && content.endsWith(">")) {
-            contentTextView.setText(Html.fromHtml(content));
+            Spanned spanned = null;
+            try {
+                spanned = Html.fromHtml(content);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            if (spanned != null && spanned.length() > 0) {
+                contentTextView.setText(spanned);
+            } else {
+                MoonUtils.identifyFaceExpression(fragment.getContext(), contentTextView, ((TextMessageContent) message.message.content).getContent(), ImageSpan.ALIGN_BOTTOM);
+            }
         } else {
             MoonUtils.identifyFaceExpression(fragment.getContext(), contentTextView, ((TextMessageContent) message.message.content).getContent(), ImageSpan.ALIGN_BOTTOM);
         }
@@ -76,19 +96,37 @@ public class TextMessageContentViewHolder extends NormalMessageContentViewHolder
         quoteInfo = textMessageContent.getQuoteInfo();
         if (quoteInfo != null && quoteInfo.getMessageUid() > 0) {
             refTextView.setVisibility(View.VISIBLE);
-            refTextView.setText(quoteInfo.getUserDisplayName() + ": " + quoteInfo.getMessageDigest());
+            refTextView.setText(this.quoteMessageDigest(quoteInfo));
         } else {
             refTextView.setVisibility(View.GONE);
         }
     }
 
-    @OnClick(R2.id.contentTextView)
+    private String quoteMessageDigest(QuoteInfo quoteInfo) {
+        Message message = quoteInfo.getMessage();
+        if (message == null) {
+            message = ChatManager.Instance().getMessageByUid(quoteInfo.getMessageUid());
+        }
+        String desc;
+        if (message != null) {
+            if (message.content instanceof RecallMessageContent) {
+                desc = "消息已被撤回";
+            } else {
+                desc = message.content.digest(message);
+            }
+        } else {
+            desc = "消息不可用，可能被删除或者过期";
+            ChatManager.Instance().loadRemoteQuotedMessage(this.message.message);
+        }
+
+        return desc;
+    }
+
     public void onClick(View view) {
         String content = ((TextMessageContent) message.message.content).getContent();
         WfcWebViewActivity.loadHtmlContent(fragment.getActivity(), "消息内容", content);
     }
 
-    @OnClick(R2.id.refTextView)
     public void onRefClick(View view) {
         Message message = ChatManager.Instance().getMessageByUid(quoteInfo.getMessageUid());
         if (message != null) {
