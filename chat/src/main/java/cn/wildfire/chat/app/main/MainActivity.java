@@ -28,6 +28,7 @@ import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.lifecycle.ViewModelProviders;
 import androidx.viewpager.widget.ViewPager;
+import androidx.viewpager2.widget.ViewPager2;
 
 import com.afollestad.materialdialogs.DialogAction;
 import com.afollestad.materialdialogs.MaterialDialog;
@@ -43,7 +44,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import butterknife.BindView;
 import cn.wildfire.chat.kit.Config;
 import cn.wildfire.chat.kit.IMConnectionStatusViewModel;
 import cn.wildfire.chat.kit.IMServiceStatusViewModel;
@@ -59,6 +59,7 @@ import cn.wildfire.chat.kit.conversation.ConversationActivity;
 import cn.wildfire.chat.kit.conversation.ConversationViewModel;
 import cn.wildfire.chat.kit.conversation.CreateConversationActivity;
 import cn.wildfire.chat.kit.conversation.forward.ForwardActivity;
+import cn.wildfire.chat.kit.conversation.message.model.UiMessage;
 import cn.wildfire.chat.kit.conversationlist.ConversationListFragment;
 import cn.wildfire.chat.kit.conversationlist.ConversationListViewModel;
 import cn.wildfire.chat.kit.conversationlist.ConversationListViewModelFactory;
@@ -69,16 +70,19 @@ import cn.wildfire.chat.kit.search.SearchPortalActivity;
 import cn.wildfire.chat.kit.user.ChangeMyNameActivity;
 import cn.wildfire.chat.kit.user.UserInfoActivity;
 import cn.wildfire.chat.kit.user.UserViewModel;
+import cn.wildfire.chat.kit.utils.FileUtils;
 import cn.wildfire.chat.kit.viewmodel.MessageViewModel;
 import cn.wildfire.chat.kit.voip.conference.ConferenceInfoActivity;
-import cn.wildfire.chat.kit.widget.ViewPagerFixed;
 import cn.wildfire.chat.kit.workspace.WebViewFragment;
 import cn.wildfirechat.chat.R;
 import cn.wildfirechat.client.ConnectionStatus;
+import cn.wildfirechat.message.FileMessageContent;
+import cn.wildfirechat.message.ImageMessageContent;
 import cn.wildfirechat.message.LinkMessageContent;
 import cn.wildfirechat.message.Message;
 import cn.wildfirechat.message.MessageContent;
 import cn.wildfirechat.message.TextMessageContent;
+import cn.wildfirechat.message.VideoMessageContent;
 import cn.wildfirechat.message.core.MessageContentType;
 import cn.wildfirechat.message.core.MessageStatus;
 import cn.wildfirechat.model.Conversation;
@@ -86,17 +90,13 @@ import cn.wildfirechat.model.UserInfo;
 import cn.wildfirechat.remote.ChatManager;
 import q.rorbin.badgeview.QBadgeView;
 
-public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageChangeListener {
+public class MainActivity extends WfcBaseActivity {
 
     private List<Fragment> mFragmentList = new ArrayList<>(4);
 
-    @BindView(R.id.bottomNavigationView)
     BottomNavigationView bottomNavigationView;
-    @BindView(R.id.contentViewPager)
-    ViewPagerFixed contentViewPager;
-    @BindView(R.id.startingTextView)
+    ViewPager2 contentViewPager;
     TextView startingTextView;
-    @BindView(R.id.contentLinearLayout)
     LinearLayout contentLinearLayout;
 
     private QBadgeView unreadMessageUnreadBadgeView;
@@ -109,9 +109,20 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
     private boolean isInitialized = false;
 
     private ContactListFragment contactListFragment;
+    private ConversationListFragment conversationListFragment;
 
     private ContactViewModel contactViewModel;
     private ConversationListViewModel conversationListViewModel;
+    private long lastSelectConversatonListItemTimestamp = 0;
+    private MenuItem secretChatMenuItem;
+
+    protected void bindViews() {
+        super.bindViews();
+        bottomNavigationView = findViewById(R.id.bottomNavigationView);
+        contentViewPager = findViewById(R.id.contentViewPager);
+        startingTextView = findViewById(R.id.startingTextView);
+        contentLinearLayout = findViewById(R.id.contentLinearLayout);
+    }
 
     private Observer<Boolean> imStatusLiveDataObserver = status -> {
         if (status && !isInitialized) {
@@ -128,6 +139,7 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
     @Override
     protected void onResume() {
         super.onResume();
+
         if (contactViewModel != null) {
             contactViewModel.reloadFriendRequestStatus();
             conversationListViewModel.reloadConversationUnreadStatus();
@@ -161,13 +173,24 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
                         reLogin(true);
                     }
                 }
+            } else if (status == ConnectionStatus.ConnectionStatusNotLicensed) {
+                Toast.makeText(MainActivity.this, "专业版IM服务没有授权或者授权过期！！！", Toast.LENGTH_LONG).show();
+            } else if (status == ConnectionStatus.ConnectionStatusTimeInconsistent) {
+                Toast.makeText(MainActivity.this, "服务器和客户端时间相差太大！！！", Toast.LENGTH_LONG).show();
+            } else if (status == ConnectionStatus.ConnectionStatusConnected) {
+                if (secretChatMenuItem != null) {
+                    boolean isEnableSecretChat = ChatManager.Instance().isEnableSecretChat();
+                    secretChatMenuItem.setEnabled(isEnableSecretChat);
+                }
             }
         });
         MessageViewModel messageViewModel = ViewModelProviders.of(this).get(MessageViewModel.class);
-        messageViewModel.messageLiveData().observe(this, uiMessage -> {
-            if (uiMessage.message.content.getMessageContentType() == MessageContentType.MESSAGE_CONTENT_TYPE_FEED
-                || uiMessage.message.content.getMessageContentType() == MessageContentType.MESSAGE_CONTENT_TYPE_FEED_COMMENT) {
-                updateMomentBadgeView();
+        messageViewModel.messageLiveData().observe(this, uiMessages -> {
+            for (UiMessage uiMessage : uiMessages) {
+                if (uiMessage.message.messageId > 0 && (uiMessage.message.content.getMessageContentType() == MessageContentType.MESSAGE_CONTENT_TYPE_FEED
+                    || uiMessage.message.content.getMessageContentType() == MessageContentType.MESSAGE_CONTENT_TYPE_FEED_COMMENT)) {
+                    updateMomentBadgeView();
+                }
             }
         });
 
@@ -176,9 +199,16 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         String type = intent.getType();
         if (Intent.ACTION_SEND.equals(action)) {
             if ("text/plain".equals(type)) {
-                handleSend(intent);
+                handleSendText(intent);
+            } else {
+                Uri fileUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                handleSendFile(fileUri);
             }
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action) && type != null) {
+            handleSendMultiple(intent);
         }
+
+        requestMandatoryPermissions();
     }
 
     @Override
@@ -188,8 +218,13 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         String type = intent.getType();
         if (Intent.ACTION_SEND.equals(action)) {
             if ("text/plain".equals(type)) {
-                handleSend(intent);
+                handleSendText(intent);
+            } else {
+                Uri fileUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                handleSendFile(fileUri);
             }
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action) && type != null) {
+            handleSendMultiple(intent); // Handle multiple items being sent
         }
     }
 
@@ -198,8 +233,8 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         super.afterMenus(menu);
         boolean isEnableSecretChat = ChatManager.Instance().isEnableSecretChat();
         if (!isEnableSecretChat) {
-            MenuItem menuItem = menu.findItem(R.id.secretChat);
-            menuItem.setEnabled(false);
+            secretChatMenuItem = menu.findItem(R.id.secretChat);
+            secretChatMenuItem.setEnabled(false);
         }
     }
 
@@ -318,7 +353,7 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         //设置ViewPager的最大缓存页面
         contentViewPager.setOffscreenPageLimit(4);
 
-        ConversationListFragment conversationListFragment = new ConversationListFragment();
+        conversationListFragment = new ConversationListFragment();
         contactListFragment = new ContactListFragment();
         DiscoveryFragment discoveryFragment = new DiscoveryFragment();
         MeFragment meFragment = new MeFragment();
@@ -330,41 +365,54 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         }
         mFragmentList.add(discoveryFragment);
         mFragmentList.add(meFragment);
-        contentViewPager.setAdapter(new HomeFragmentPagerAdapter(getSupportFragmentManager(), mFragmentList));
-        contentViewPager.setOnPageChangeListener(this);
+        contentViewPager.setAdapter(new HomeFragmentPagerAdapter(this, mFragmentList));
+        contentViewPager.registerOnPageChangeCallback(this.onPageChangeCallback);
 
-        bottomNavigationView.setOnNavigationItemSelectedListener(item -> {
+        bottomNavigationView.setOnItemReselectedListener(item -> {
             switch (item.getItemId()) {
                 case R.id.conversation_list:
-                    contentViewPager.setCurrentItem(0, false);
+                    long now = System.currentTimeMillis();
+                    if (now - lastSelectConversatonListItemTimestamp < 200) {
+                        conversationListFragment.scrollToNextUnreadConversation();
+                    }
+                    lastSelectConversatonListItemTimestamp = now;
+                    break;
+                default:
+                    break;
+            }
+        });
+        bottomNavigationView.setOnItemSelectedListener(item -> {
+            switch (item.getItemId()) {
+                case R.id.conversation_list:
+                    setCurrentViewPagerItem(0, false);
                     setTitle("野火");
                     if (!isDarkTheme()) {
                         setTitleBackgroundResource(R.color.gray5, false);
                     }
                     break;
                 case R.id.contact:
-                    contentViewPager.setCurrentItem(1, false);
+                    setCurrentViewPagerItem(1, false);
                     setTitle("通讯录");
                     if (!isDarkTheme()) {
                         setTitleBackgroundResource(R.color.gray5, false);
                     }
                     break;
                 case R.id.workspace:
-                    contentViewPager.setCurrentItem(2, false);
+                    setCurrentViewPagerItem(2, false);
                     setTitle("工作台");
                     if (!isDarkTheme()) {
                         setTitleBackgroundResource(R.color.gray5, false);
                     }
                     break;
                 case R.id.discovery:
-                    contentViewPager.setCurrentItem(showWorkSpace ? 3 : 2, false);
+                    setCurrentViewPagerItem(showWorkSpace ? 3 : 2, false);
                     setTitle("发现");
                     if (!isDarkTheme()) {
                         setTitleBackgroundResource(R.color.gray5, false);
                     }
                     break;
                 case R.id.me:
-                    contentViewPager.setCurrentItem(showWorkSpace ? 4 : 3, false);
+                    setCurrentViewPagerItem(showWorkSpace ? 4 : 3, false);
                     setTitle("我的");
                     if (!isDarkTheme()) {
                         setTitleBackgroundResource(R.color.white, false);
@@ -449,49 +497,6 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
     }
 
     @Override
-    public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
-    }
-
-    @Override
-    public void onPageSelected(int position) {
-        if (TextUtils.isEmpty(Config.WORKSPACE_URL)) {
-            if (position > 1) {
-                position++;
-            }
-        }
-        switch (position) {
-            case 0:
-                bottomNavigationView.setSelectedItemId(R.id.conversation_list);
-                break;
-            case 1:
-                bottomNavigationView.setSelectedItemId(R.id.contact);
-                break;
-            case 2:
-                bottomNavigationView.setSelectedItemId(R.id.workspace);
-                break;
-            case 3:
-                bottomNavigationView.setSelectedItemId(R.id.discovery);
-                break;
-            case 4:
-                bottomNavigationView.setSelectedItemId(R.id.me);
-                break;
-            default:
-                break;
-        }
-        contactListFragment.showQuickIndexBar(position == 1);
-    }
-
-    @Override
-    public void onPageScrollStateChanged(int state) {
-        if (state != ViewPager.SCROLL_STATE_IDLE) {
-            //滚动过程中隐藏快速导航条
-            contactListFragment.showQuickIndexBar(false);
-        } else {
-            contactListFragment.showQuickIndexBar(true);
-        }
-    }
-
-    @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         if (resultCode != RESULT_OK) {
             super.onActivityResult(requestCode, resultCode, data);
@@ -535,7 +540,7 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
 
     private void onScanPcQrCode(String qrcode) {
         String prefix = qrcode.substring(0, qrcode.lastIndexOf('/') + 1);
-        String value = qrcode.substring(qrcode.lastIndexOf("/") + 1);
+        String value = qrcode.substring(qrcode.lastIndexOf('/') + 1, qrcode.indexOf('?') > 0 ? qrcode.indexOf('?') : qrcode.length());
         Uri uri = Uri.parse(qrcode);
         Set<String> queryNames = uri.getQueryParameterNames();
         Map<String, Object> params = new HashMap<>();
@@ -550,7 +555,7 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
                 showUser(value);
                 break;
             case WfcScheme.QR_CODE_PREFIX_GROUP:
-                joinGroup(value);
+                joinGroup(value, params);
                 break;
             case WfcScheme.QR_CODE_PREFIX_CHANNEL:
                 subscribeChannel(value);
@@ -582,9 +587,10 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         startActivity(intent);
     }
 
-    private void joinGroup(String groupId) {
+    private void joinGroup(String groupId, Map<String, Object> params) {
         Intent intent = new Intent(this, GroupInfoActivity.class);
         intent.putExtra("groupId", groupId);
+        intent.putExtra("from", (String) params.get("from"));
         startActivity(intent);
     }
 
@@ -631,8 +637,8 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
     }
 
     // 分享
-    private void handleSend(Intent intent) {
-        String sharedText = intent.getStringExtra(Intent.EXTRA_INTENT);
+    private void handleSendText(Intent intent) {
+        String sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
         if (!TextUtils.isEmpty(sharedText)) {
             MessageContent content = new TextMessageContent(sharedText);
             shareMessage(content);
@@ -654,6 +660,49 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
                 }
             }
         }
+    }
+
+    private void handleSendMultiple(Intent intent) {
+        // TODO 暂不支持一次分享多个文件，分享页面不支持，没有相关 UI
+//        ArrayList<Uri> imageUris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+//        if (imageUris != null) {
+//            for (Uri uri : imageUris) {
+//                handleSendFile(uri);
+//            }
+//        }
+    }
+
+    private void handleSendFile(Uri fileUri) {
+        if (fileUri == null) {
+            return;
+        }
+        String filePath = FileUtils.getPath(this, fileUri);
+        if (TextUtils.isEmpty(filePath)) {
+            Toast.makeText(this, "Error selecting file", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String suffix = filePath.substring(filePath.lastIndexOf("."));
+        MessageContent content;
+        switch (suffix) {
+            case ".png":
+            case ".jpg":
+            case ".jpeg":
+            case ".gif":
+                content = new ImageMessageContent(filePath);
+                break;
+            case ".3gp":
+            case ".mpg":
+            case ".mpeg":
+            case ".mpe":
+            case ".mp4":
+            case ".avi":
+                content = new VideoMessageContent(filePath);
+                break;
+            default:
+                content = new FileMessageContent(filePath);
+                break;
+        }
+        shareMessage(content);
     }
 
     private void shareMessage(MessageContent content) {
@@ -689,4 +738,88 @@ public class MainActivity extends WfcBaseActivity implements ViewPager.OnPageCha
         content.setUrl(url);
         return content;
     }
+
+    private void requestMandatoryPermissions() {
+        boolean resumed = false;
+//        if (Build.VERSION.SDK_INT >= 33) {
+//            AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+//            if (!alarmManager.canScheduleExactAlarms()) {
+//                Toast.makeText(this, "需要精确闹钟权限，否则不能正常使用 IM 功能", Toast.LENGTH_LONG).show();
+//                Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getPackageName()));
+//                startActivity(intent);
+//                resumed = true;
+//            }
+//        }
+
+
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            if (!Settings.canDrawOverlays(this)) {
+//                Toast.makeText(this, "需要后台弹出界面和显示悬浮窗权限，否则后台运行时，无法弹出音视频界面", Toast.LENGTH_LONG).show();
+//                if (!resumed) {
+//                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+//                    startActivity(intent);
+//                }
+//            }
+//        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            String[] permissions = new String[]{Manifest.permission.POST_NOTIFICATIONS};
+            if (!checkPermission(permissions)) {
+                if (!checkPermission(permissions)) {
+                    requestPermissions(permissions, 101);
+                }
+            }
+        }
+    }
+
+    private void setCurrentViewPagerItem(int item, boolean smoothScroll) {
+        if (contentViewPager.getCurrentItem() != item) {
+            contentViewPager.setCurrentItem(item, smoothScroll);
+        }
+    }
+
+    private ViewPager2.OnPageChangeCallback onPageChangeCallback = new ViewPager2.OnPageChangeCallback() {
+        @Override
+        public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+        }
+
+        @Override
+        public void onPageSelected(int position) {
+            if (TextUtils.isEmpty(Config.WORKSPACE_URL)) {
+                if (position > 1) {
+                    position++;
+                }
+            }
+            switch (position) {
+                case 0:
+                    bottomNavigationView.setSelectedItemId(R.id.conversation_list);
+                    break;
+                case 1:
+                    bottomNavigationView.setSelectedItemId(R.id.contact);
+                    break;
+                case 2:
+                    bottomNavigationView.setSelectedItemId(R.id.workspace);
+                    break;
+                case 3:
+                    bottomNavigationView.setSelectedItemId(R.id.discovery);
+                    break;
+                case 4:
+                    bottomNavigationView.setSelectedItemId(R.id.me);
+                    break;
+                default:
+                    break;
+            }
+            contactListFragment.showQuickIndexBar(position == 1);
+        }
+
+        @Override
+        public void onPageScrollStateChanged(int state) {
+            if (state != ViewPager.SCROLL_STATE_IDLE) {
+                //滚动过程中隐藏快速导航条
+                contactListFragment.showQuickIndexBar(false);
+            } else {
+                contactListFragment.showQuickIndexBar(true);
+            }
+        }
+    };
 }

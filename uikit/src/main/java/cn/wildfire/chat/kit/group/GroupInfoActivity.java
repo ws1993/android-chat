@@ -15,48 +15,57 @@ import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProviders;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.bumptech.glide.Glide;
 
 import java.util.Collections;
-import java.util.List;
 
-import butterknife.BindView;
-import butterknife.OnClick;
-import cn.wildfire.chat.kit.GlideApp;
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.R2;
 import cn.wildfire.chat.kit.WfcBaseActivity;
 import cn.wildfire.chat.kit.conversation.ConversationActivity;
 import cn.wildfire.chat.kit.user.UserViewModel;
+import cn.wildfirechat.client.GroupMemberSource;
 import cn.wildfirechat.model.Conversation;
 import cn.wildfirechat.model.GroupInfo;
-import cn.wildfirechat.model.GroupMember;
 
 public class GroupInfoActivity extends WfcBaseActivity {
     private String userId;
     private String groupId;
+    private String from;
     private GroupInfo groupInfo;
     private boolean isJoined;
     private GroupViewModel groupViewModel;
-    @BindView(R2.id.groupNameTextView)
     TextView groupNameTextView;
-    @BindView(R2.id.portraitImageView)
     ImageView groupPortraitImageView;
-    @BindView(R2.id.actionButton)
     Button actionButton;
 
     private MaterialDialog dialog;
+
+    protected void bindEvents() {
+        super.bindEvents();
+        findViewById(R.id.actionButton).setOnClickListener(v -> action());
+    }
+
+    protected void bindViews() {
+        super.bindViews();
+        groupNameTextView = findViewById(R.id.groupNameTextView);
+        groupPortraitImageView = findViewById(R.id.portraitImageView);
+        actionButton = findViewById(R.id.actionButton);
+    }
 
     @Override
     protected void afterViews() {
         Intent intent = getIntent();
         groupId = intent.getStringExtra("groupId");
+        from = intent.getStringExtra("from");
         groupViewModel = ViewModelProviders.of(this).get(GroupViewModel.class);
 
         groupViewModel.groupInfoUpdateLiveData().observe(this, groupInfos -> {
             for (GroupInfo info : groupInfos) {
                 if (info.target.equals(groupId)) {
                     this.groupInfo = info;
+                    dismissLoading();
                     showGroupInfo(info);
+                    updateActionButtonStatus();
                 }
             }
         });
@@ -67,38 +76,27 @@ public class GroupInfoActivity extends WfcBaseActivity {
         UserViewModel userViewModel = ViewModelProviders.of(this).get(UserViewModel.class);
         userId = userViewModel.getUserId();
 
-        groupViewModel.groupMembersUpdateLiveData().observe(this, members -> {
-            if (members.get(0).groupId.equals(groupId)) {
-                List<GroupMember> gMembers = groupViewModel.getGroupMembers(groupId, false);
-                for (GroupMember member : gMembers) {
-                    if (member.type != GroupMember.GroupMemberType.Removed && member.memberId.equals(userId)) {
-                        this.isJoined = true;
-                    }
-                }
-                dismissLoading();
-                updateActionButtonStatus();
-            }
-        });
-
-        List<GroupMember> groupMembers = groupViewModel.getGroupMembers(groupId, true);
-        if (groupMembers == null || (groupMembers.isEmpty() && groupInfo.memberCount > 0)) {
+        // 本地没有相关群组信息
+        if (groupInfo.updateDt == 0) {
             showLoading();
-        } else {
-            for (GroupMember member : groupMembers) {
-                if (member.type != GroupMember.GroupMemberType.Removed && member.memberId.equals(userId)) {
-                    this.isJoined = true;
-                }
-            }
-            updateActionButtonStatus();
+            return;
         }
+
         showGroupInfo(groupInfo);
+        updateActionButtonStatus();
     }
 
     private void updateActionButtonStatus() {
-        if (isJoined) {
-            actionButton.setText("进入群聊");
-        } else {
+        if (groupInfo.memberDt < -1) {
+            // 已退出群组
             actionButton.setText("加入群聊");
+        } else if (groupInfo.memberDt == -1) {
+            // 未加入
+            actionButton.setText("加入群聊");
+        } else {
+            // 已加入群组
+            this.isJoined = true;
+            actionButton.setText("进入群聊");
         }
     }
 
@@ -123,7 +121,7 @@ public class GroupInfoActivity extends WfcBaseActivity {
         if (groupInfo == null) {
             return;
         }
-        GlideApp.with(this)
+        Glide.with(this)
             .load(groupInfo.portrait)
             .placeholder(R.mipmap.ic_group_chat)
             .into(groupPortraitImageView);
@@ -135,14 +133,14 @@ public class GroupInfoActivity extends WfcBaseActivity {
         return R.layout.group_info_activity;
     }
 
-    @OnClick(R2.id.actionButton)
     void action() {
         if (isJoined) {
             Intent intent = ConversationActivity.buildConversationIntent(this, Conversation.ConversationType.Group, groupId, 0);
             startActivity(intent);
             finish();
         } else {
-            groupViewModel.addGroupMember(groupInfo, Collections.singletonList(userId), null, Collections.singletonList(0)).observe(this, new Observer<Boolean>() {
+            String memberExtra = GroupMemberSource.buildGroupMemberSourceExtra(GroupMemberSource.Type_QRCode, this.from);
+            groupViewModel.addGroupMember(groupInfo, Collections.singletonList(userId), null, Collections.singletonList(0), memberExtra).observe(this, new Observer<Boolean>() {
                 @Override
                 public void onChanged(Boolean aBoolean) {
                     if (aBoolean) {

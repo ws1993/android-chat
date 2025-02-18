@@ -15,6 +15,8 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.media.AudioAttributes;
+import android.net.Uri;
 import android.os.Build;
 import android.text.TextUtils;
 
@@ -45,6 +47,8 @@ public class WfcNotificationManager {
     }
 
     private static WfcNotificationManager notificationManager;
+    // 小米系统上，允许推送时，默认还是没有铃声的。将 wfcChannelId 设置为接入推送时，在小米后台申请的 channelId，可以保证铃声生效
+    private static final String wfcNotificationChannelId = "wfc_notification";
 
     private final List<Long> notificationMessages = new ArrayList<>();
     private int friendRequestNotificationId = 10000;
@@ -64,23 +68,33 @@ public class WfcNotificationManager {
 
     private void showNotification(Context context, String tag, int id, String title, String content, PendingIntent pendingIntent) {
         NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        String channelId = "wfc_notification";
+        Uri notificationRingUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.receive_msg_notification);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(channelId,
-                "wildfire chat message",
+            NotificationChannel channel = new NotificationChannel(wfcNotificationChannelId,
+                "野火IM 消息通知",
                 NotificationManager.IMPORTANCE_HIGH);
 
             channel.enableLights(true); //是否在桌面icon右上角展示小红点
             channel.setLightColor(Color.GREEN); //小红点颜色
             channel.setShowBadge(true); //是否在久按桌面图标时显示此渠道的通知
+//            Uri defaultNotificaitonSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            AudioAttributes.Builder builder = new AudioAttributes.Builder();
+            builder
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION);
+            // 小米手机，发送消息时设置自定义铃声将不会生效，需要在新建 Channel 时设置自定义铃声。
+            // 请参考：https://dev.mi.com/console/doc/detail?pId=2422#_2
+            channel.setSound(notificationRingUri, builder.build());
             notificationManager.createNotificationChannel(channel);
         }
 
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, wfcNotificationChannelId)
+            .setSmallIcon(R.mipmap.ic_launcher_notification)
             .setAutoCancel(true)
             .setCategory(CATEGORY_MESSAGE)
+            .setSound(notificationRingUri)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(DEFAULT_ALL);
         builder.setContentIntent(pendingIntent);
         builder.setContentTitle(title);
@@ -153,7 +167,7 @@ public class WfcNotificationManager {
             } else if (message.conversation.type == Conversation.ConversationType.Group) {
                 GroupInfo groupInfo = ChatManager.Instance().getGroupInfo(message.conversation.target, false);
                 title = groupInfo == null ? "群聊" : (!TextUtils.isEmpty(groupInfo.remark) ? groupInfo.remark : groupInfo.name);
-            } else if(message.conversation.type == Conversation.ConversationType.Channel) {
+            } else if (message.conversation.type == Conversation.ConversationType.Channel) {
                 ChannelInfo channelInfo = ChatManager.Instance().getChannelInfo(message.conversation.target, false);
                 title = channelInfo == null ? "公众号新消息" : channelInfo.name;
             } else {

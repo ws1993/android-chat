@@ -10,10 +10,7 @@ import android.text.TextUtils;
 import java.util.ArrayList;
 import java.util.List;
 
-import butterknife.BindView;
-import butterknife.OnClick;
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.R2;
 import cn.wildfire.chat.kit.WfcBaseNoToolbarActivity;
 import cn.wildfire.chat.kit.widget.SearchView;
 import cn.wildfirechat.remote.ChatManager;
@@ -25,16 +22,26 @@ public abstract class SearchActivity extends WfcBaseNoToolbarActivity {
     private SearchFragment searchFragment;
     private List<SearchableModule> modules = new ArrayList<>();
 
-    @BindView(R2.id.search_view)
     SearchView searchView;
 
-    @OnClick(R2.id.cancel)
     public void onCancelClick() {
         finish();
     }
 
-    protected boolean hideSearchDescView(){
+    private void bindEvents() {
+        findViewById(R.id.cancel).setOnClickListener(v -> onCancelClick());
+    }
+
+    private void bindViews() {
+        searchView = findViewById(R.id.search_view);
+    }
+
+    protected boolean hideSearchDescView() {
         return false;
+    }
+
+    protected String searchTip() {
+        return null;
     }
 
     /**
@@ -51,6 +58,8 @@ public abstract class SearchActivity extends WfcBaseNoToolbarActivity {
     }
 
     protected void afterViews() {
+        bindViews();
+        bindEvents();
         initSearchView();
         initSearchFragment();
         String initialKeyword = getIntent().getStringExtra("keyword");
@@ -59,7 +68,7 @@ public abstract class SearchActivity extends WfcBaseNoToolbarActivity {
                 searchView.setQuery(initialKeyword);
             }
         });
-        if(hideSearchDescView()){
+        if (hideSearchDescView()) {
             searchView.clearFocus();
             hideInputMethod();
         }
@@ -73,6 +82,7 @@ public abstract class SearchActivity extends WfcBaseNoToolbarActivity {
         searchFragment = new SearchFragment();
         Bundle args = new Bundle();
         args.putBoolean(SearchFragment.HIDE_SEARCH_DESC_VIEW, hideSearchDescView());
+        args.putString(SearchFragment.SEARCH_TIP, searchTip());
         searchFragment.setArguments(args);
         getSupportFragmentManager().beginTransaction()
             .replace(R.id.containerFrameLayout, searchFragment)

@@ -10,11 +10,19 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.text.TextUtils;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleObserver;
 import androidx.lifecycle.OnLifecycleEvent;
@@ -28,16 +36,20 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
 import com.lqr.emoji.LQREmotionKit;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
 import cn.wildfire.chat.kit.common.AppScopeViewModel;
 import cn.wildfire.chat.kit.net.OKHttpHelper;
+import cn.wildfire.chat.kit.organization.OrganizationServiceProvider;
 import cn.wildfire.chat.kit.third.utils.UIUtils;
 import cn.wildfire.chat.kit.voip.AsyncPlayer;
 import cn.wildfire.chat.kit.voip.MultiCallActivity;
@@ -59,17 +71,24 @@ import cn.wildfirechat.remote.OnDeleteMessageListener;
 import cn.wildfirechat.remote.OnFriendUpdateListener;
 import cn.wildfirechat.remote.OnRecallMessageListener;
 import cn.wildfirechat.remote.OnReceiveMessageListener;
+import me.aurelion.x.ui.view.watermark.WaterMarkInfo;
+import me.aurelion.x.ui.view.watermark.WaterMarkManager;
 
 
-public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageListener, OnRecallMessageListener, OnDeleteMessageListener, OnFriendUpdateListener {
+public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageListener, OnRecallMessageListener, OnDeleteMessageListener, OnFriendUpdateListener, Application.ActivityLifecycleCallbacks {
 
     private boolean isBackground = true;
     private Application application;
     private static ViewModelProvider viewModelProvider;
     private ViewModelStore viewModelStore;
     private AppServiceProvider appServiceProvider;
+    private OrganizationServiceProvider organizationServiceProvider;
     private static WfcUIKit wfcUIKit;
     private boolean isSupportMoment = false;
+    private WeakReference<Activity> currentActivityWrf;
+    private boolean enableNativeNotification = false;
+
+    private AVEngineKit.AVEngineCallback avEngineCallback = null;
 
     private WfcUIKit() {
     }
@@ -93,12 +112,14 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
         ProcessLifecycleOwner.get().getLifecycle().addObserver(new LifecycleObserver() {
             @OnLifecycleEvent(Lifecycle.Event.ON_START)
             public void onForeground() {
-                WfcNotificationManager.getInstance().clearAllNotification(application);
+                if (enableNativeNotification) {
+                    WfcNotificationManager.getInstance().clearAllNotification(application);
+                }
                 isBackground = false;
 
                 // 处理没有后台弹出界面权限
                 AVEngineKit.CallSession session = AVEngineKit.Instance().getCurrentSession();
-                if (session != null) {
+                if (session != null && session.getState() != AVEngineKit.CallState.Idle) {
                     onReceiveCall(session);
                 }
             }
@@ -115,7 +136,31 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
         OKHttpHelper.init(application.getApplicationContext());
         ConferenceManager.init(application);
 
+        application.registerActivityLifecycleCallbacks(this);
+
+        if (Config.ENABLE_WATER_MARK) {
+            WaterMarkManager.setInfo(
+                WaterMarkInfo.create()
+                    .setDegrees(-45)
+                    .setTextSize(UIUtils.dip2Px(application, 18))
+                    .setTextColor(Color.parseColor("#24999999"))
+                    .setTextBold(false)
+                    .setDx(UIUtils.dip2Px(application, 60))
+                    .setDy(UIUtils.dip2Px(application, 120))
+                    .setAlign(Paint.Align.CENTER)
+                    .generate());
+            ChatManager.Instance().getMainHandler().post(this::updateWaterMark);
+        }
+
         Log.d("WfcUIKit", "init end");
+    }
+
+    public void setEnableNativeNotification(boolean enable) {
+        this.enableNativeNotification = enable;
+    }
+
+    public void setAvEngineCallback(AVEngineKit.AVEngineCallback avEngineCallback) {
+        this.avEngineCallback = avEngineCallback;
     }
 
     public boolean isSupportMoment() {
@@ -141,7 +186,7 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
             //另外需要IM服务配置server.mobile_default_silent_when_pc_online为false。必须保持与服务器同步。
             //ChatManagerHolder.gChatManager.setDefaultSilentWhenPcOnline(false);
 
-            ringPlayer = new AsyncPlayer(null);
+            ringPlayer = new AsyncPlayer("voip-ring-player");
 
             // 仅高级版支持，是否禁用双流模式
             //AVEngineKit.DISABLE_DUAL_STREAM_MODE = true;
@@ -151,12 +196,16 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
             //AVEngineKit.MAX_AUDIO_PARTICIPANT_COUNT= 16;
             AVEngineKit.init(application, this);
             AVEngineKit.Instance().setVideoProfile(VideoProfile.VP360P, false);
+            // 屏幕共享，使用替换模式
+            AVEngineKit.SCREEN_SHARING_REPLACE_MODE = true;
 
             ChatManager.Instance().registerMessageContent(ConferenceChangeModeContent.class);
             ChatManager.Instance().registerMessageContent(ConferenceCommandContent.class);
             ChatManagerHolder.gAVEngine = AVEngineKit.Instance();
-            for (String[] server : Config.ICE_SERVERS) {
-                ChatManagerHolder.gAVEngine.addIceServer(server[0], server[1], server[2]);
+            if (Config.ICE_SERVERS != null) {
+                for (String[] server : Config.ICE_SERVERS) {
+                    ChatManagerHolder.gAVEngine.addIceServer(server[0], server[1], server[2]);
+                }
             }
         } catch (NotInitializedExecption notInitializedExecption) {
             notInitializedExecption.printStackTrace();
@@ -192,6 +241,8 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
         SharedPreferences sp = application.getSharedPreferences(Config.SP_CONFIG_FILE_NAME, Context.MODE_PRIVATE);
         boolean pttEnabled = sp.getBoolean("pttEnabled", true);
         if (pttEnabled) {
+            // 全局对讲生效；如果只希望某些会话里面，对讲生效，请调用 {@link PTTClient#setEnablePtt(Conversation, boolean)} 设置
+            // PTTClient.ENABLE_GLOBAL_PTT = true;
             PTTClient.getInstance().init(application);
         }
     }
@@ -210,13 +261,17 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
     public void onReceiveCall(AVEngineKit.CallSession session) {
         ChatManager.Instance().getMainHandler().postDelayed(() -> {
             AVEngineKit.CallSession callSession = AVEngineKit.Instance().getCurrentSession();
+            if (callSession == null || callSession.getState() == AVEngineKit.CallState.Idle) {
+                return;
+            }
+//            callSession.setVideoCapturer(new UVCCameraCapturer());
 
-            List<String> participants = session.getParticipantIds();
+            List<String> participants = callSession.getParticipantIds();
             if (participants == null || participants.isEmpty()) {
                 return;
             }
 
-            Conversation conversation = session.getConversation();
+            Conversation conversation = callSession.getConversation();
             if (conversation == null) {
                 return;
             }
@@ -230,6 +285,9 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
                 startActivity(application, intent);
             }
             VoipCallService.start(application, false);
+            if (avEngineCallback != null) {
+                avEngineCallback.onReceiveCall(AVEngineKit.Instance().getCurrentSession());
+            }
         }, 200);
     }
 
@@ -237,6 +295,10 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
 
     @Override
     public void shouldStartRing(boolean isIncoming) {
+        if (avEngineCallback != null) {
+            avEngineCallback.shouldStartRing(isIncoming);
+            return;
+        }
         if (isIncoming && ChatManager.Instance().isVoipSilent()) {
             Log.d("wfcUIKit", "用户设置禁止voip通知，忽略来电提醒");
             return;
@@ -258,24 +320,38 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
     }
 
     @Override
-    public void shouldSopRing() {
+    public void shouldStopRing() {
+        if (avEngineCallback != null) {
+            avEngineCallback.shouldStopRing();
+            return;
+        }
         Log.d("wfcUIKit", "showStopRing");
         ringPlayer.stop();
+    }
+
+    @Override
+    public void didCallEnded(AVEngineKit.CallEndReason reason, int duration) {
+        if (avEngineCallback != null) {
+            avEngineCallback.didCallEnded(reason, duration);
+            return;
+        }
     }
 
     // pls refer to https://stackoverflow.com/questions/11124119/android-starting-new-activity-from-application-class
     public static void singleCall(Context context, String targetId, boolean isAudioOnly) {
         Conversation conversation = new Conversation(Conversation.ConversationType.Single, targetId);
-        AVEngineKit.Instance().startCall(conversation, Collections.singletonList(targetId), isAudioOnly, null);
+        AVEngineKit.CallSession session = AVEngineKit.Instance().startCall(conversation, Collections.singletonList(targetId), isAudioOnly, null);
+        if (session != null) {
+//        session.setVideoCapturer(new UVCCameraCapturer());
+            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            audioManager.setMode(isAudioOnly ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
+            audioManager.setSpeakerphoneOn(!isAudioOnly);
 
-        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        audioManager.setMode(isAudioOnly ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
-        audioManager.setSpeakerphoneOn(!isAudioOnly);
+            Intent voip = new Intent(context, SingleCallActivity.class);
+            startActivity(context, voip);
 
-        Intent voip = new Intent(context, SingleCallActivity.class);
-        startActivity(context, voip);
-
-        VoipCallService.start(context, false);
+            VoipCallService.start(context, false);
+        }
     }
 
     public static void multiCall(Context context, String groupId, List<String> participants, boolean isAudioOnly) {
@@ -285,14 +361,15 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
         }
 
         Conversation conversation = new Conversation(Conversation.ConversationType.Group, groupId);
-        AVEngineKit.Instance().startCall(conversation, participants, isAudioOnly, null);
+        AVEngineKit.CallSession session = AVEngineKit.Instance().startCall(conversation, participants, isAudioOnly, null);
+        if (session != null) {
+            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            audioManager.setMode(AudioManager.MODE_NORMAL);
+            audioManager.setSpeakerphoneOn(true);
 
-        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        audioManager.setMode(AudioManager.MODE_NORMAL);
-        audioManager.setSpeakerphoneOn(true);
-
-        Intent intent = new Intent(context, MultiCallActivity.class);
-        startActivity(context, intent);
+            Intent intent = new Intent(context, MultiCallActivity.class);
+            startActivity(context, intent);
+        }
     }
 
     public static void startActivity(Context context, Intent intent) {
@@ -300,10 +377,25 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
             context.startActivity(intent);
             ((Activity) context).overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         } else {
+            WeakReference<Activity> wrf = getWfcUIKit().currentActivityWrf;
+            if (wrf != null) {
+                Activity activity = wrf.get();
+                if (activity != null && !activity.isFinishing()) {
+                    activity.startActivity(intent);
+                    activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                    return;
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!Settings.canDrawOverlays(context)) {
+                    Toast.makeText(context, "无法弹出页面，请允许后台弹出界面权限和显示悬浮窗权限", Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
             Intent main = new Intent(context.getPackageName() + ".main");
 //            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             PendingIntent pendingIntent = null;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 pendingIntent = PendingIntent.getActivities(context, 100, new Intent[]{main, intent}, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             } else {
                 pendingIntent = PendingIntent.getActivities(context, 100, new Intent[]{main, intent}, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -343,7 +435,9 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
                 }
             }
 
-            WfcNotificationManager.getInstance().handleReceiveMessage(application, msgs);
+            if (enableNativeNotification) {
+                WfcNotificationManager.getInstance().handleReceiveMessage(application, msgs);
+            }
         } else {
             // do nothing
         }
@@ -351,14 +445,14 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
 
     @Override
     public void onRecallMessage(Message message) {
-        if (isBackground) {
+        if (isBackground && enableNativeNotification) {
             WfcNotificationManager.getInstance().handleRecallMessage(application, message);
         }
     }
 
     @Override
     public void onDeleteMessage(Message message) {
-        if (isBackground) {
+        if (isBackground && enableNativeNotification) {
             WfcNotificationManager.getInstance().handleDeleteMessage(application, message);
         }
     }
@@ -371,7 +465,7 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
 
     @Override
     public void onFriendRequestUpdate(List<String> newRequests) {
-        if (isBackground) {
+        if (isBackground && enableNativeNotification) {
             if (newRequests == null || newRequests.isEmpty()) {
                 return;
             }
@@ -386,5 +480,61 @@ public class WfcUIKit implements AVEngineKit.AVEngineCallback, OnReceiveMessageL
 
     public void setAppServiceProvider(AppServiceProvider appServiceProvider) {
         this.appServiceProvider = appServiceProvider;
+    }
+
+    public OrganizationServiceProvider getOrganizationServiceProvider() {
+        return organizationServiceProvider;
+    }
+
+    public void setOrganizationServiceProvider(OrganizationServiceProvider organizationServiceProvider) {
+        this.organizationServiceProvider = organizationServiceProvider;
+    }
+
+    @Override
+    public void onActivityCreated(@NonNull Activity activity, @Nullable Bundle savedInstanceState) {
+
+    }
+
+    @Override
+    public void onActivityStarted(@NonNull Activity activity) {
+
+    }
+
+    @Override
+    public void onActivityResumed(@NonNull Activity activity) {
+        this.currentActivityWrf = new WeakReference<>(activity);
+    }
+
+    @Override
+    public void onActivityPaused(@NonNull Activity activity) {
+
+    }
+
+    @Override
+    public void onActivityStopped(@NonNull Activity activity) {
+        if (this.currentActivityWrf != null && this.currentActivityWrf.get() == activity) {
+            this.currentActivityWrf = null;
+        }
+    }
+
+    @Override
+    public void onActivitySaveInstanceState(@NonNull Activity activity, @NonNull Bundle outState) {
+
+    }
+
+    @Override
+    public void onActivityDestroyed(@NonNull Activity activity) {
+
+    }
+
+    private void updateWaterMark() {
+        SimpleDateFormat sdf = new SimpleDateFormat("MM-dd HH:mm");
+        String userId = ChatManager.Instance().getUserId();
+        if (!TextUtils.isEmpty(userId)) {
+            String waterMarkStr = userId + " " + sdf.format(new Date());
+            WaterMarkManager.setText(waterMarkStr);
+        }
+
+        ChatManager.Instance().getMainHandler().postDelayed(this::updateWaterMark, 60 * 1000);
     }
 }

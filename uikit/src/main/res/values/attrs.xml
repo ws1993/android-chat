@@ -21,16 +21,34 @@
         <attr name="title_color" format="color" />
         <attr name="badge_count" format="integer" />
         <attr name="start_src" format="reference|color" />
+        <attr name="start_tint" format="color" />
         <attr name="end_src" format="reference|color" />
         <attr name="desc" format="string" />
         <attr name="desc_size" format="dimension" />
         <attr name="desc_color" format="color" />
         <attr name="show_arrow_indicator" format="boolean" />
+        <attr name="show_divider" format="boolean" />
         <attr name="divider_align_to_title" format="boolean" />
     </declare-styleable>
 
     <declare-styleable name="MaxSizeRecyclerView">
         <attr name="maxWidth" format="dimension" />
         <attr name="maxHeight" format="dimension" />
+    </declare-styleable>
+
+    <declare-styleable name="WaterMarkView">
+        <attr name="water_mark_degree" format="integer|reference" />
+        <attr name="water_mark_text" format="string|reference" />
+        <attr name="water_mark_textColor" format="color|reference" />
+        <attr name="water_mark_textSize" format="dimension|reference" />
+        <attr name="water_mark_textBold" format="boolean" />
+        <attr name="water_mark_dx" format="dimension|reference" />
+        <attr name="water_mark_dy" format="dimension|reference" />
+        <attr name="water_mark_align" format="dimension">
+            <enum name="LEFT" value="0" />
+            <enum name="CENTER" value="1" />
+            <enum name="RIGHT" value="2" />
+        </attr>
+        <attr name="water_mark_sync" format="boolean" />
     </declare-styleable>
 </resources>

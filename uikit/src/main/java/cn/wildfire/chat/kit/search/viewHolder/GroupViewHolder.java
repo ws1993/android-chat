@@ -11,30 +11,29 @@ import android.widget.TextView;
 
 import androidx.fragment.app.Fragment;
 
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
-import cn.wildfire.chat.kit.GlideApp;
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.R2;
-import cn.wildfire.chat.kit.third.utils.ImageUtils;
 import cn.wildfire.chat.kit.third.utils.UIUtils;
 import cn.wildfirechat.model.GroupInfo;
 import cn.wildfirechat.model.GroupSearchResult;
 
 public class GroupViewHolder extends ResultItemViewHolder<GroupSearchResult> {
-    @BindView(R2.id.portraitImageView)
     ImageView portraitImageView;
-    @BindView(R2.id.nameTextView)
     TextView nameTextView;
-    @BindView(R2.id.descTextView)
     TextView descTextView;
 
     public GroupViewHolder(Fragment fragment, View itemView) {
         super(fragment, itemView);
-        ButterKnife.bind(this, itemView);
+        bindViews(itemView);
+    }
+
+    private void bindViews(View itemView) {
+        portraitImageView = itemView.findViewById(R.id.portraitImageView);
+        nameTextView = itemView.findViewById(R.id.nameTextView);
+        descTextView = itemView.findViewById(R.id.descTextView);
     }
 
 
@@ -43,10 +42,7 @@ public class GroupViewHolder extends ResultItemViewHolder<GroupSearchResult> {
         GroupInfo groupInfo = groupSearchResult.groupInfo;
         nameTextView.setText(!TextUtils.isEmpty(groupInfo.remark) ? groupInfo.remark : groupInfo.name);
         String portrait = groupSearchResult.groupInfo.portrait;
-        if (TextUtils.isEmpty(portrait)) {
-            portrait = ImageUtils.getGroupGridPortrait(fragment.getContext(), groupSearchResult.groupInfo.target, 60);
-        }
-        GlideApp
+        Glide
             .with(fragment)
             .load(portrait)
             .placeholder(R.mipmap.ic_group_chat)

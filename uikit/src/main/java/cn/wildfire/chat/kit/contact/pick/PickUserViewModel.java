@@ -113,7 +113,7 @@ public class PickUserViewModel extends ViewModel {
             return null;
         }
         resultList.get(0).setShowCategory(true);
-        resultList.get(0).setCategory("搜索结果");
+//        resultList.get(0).setCategory("搜索结果");
         return resultList;
     }
 
@@ -122,8 +122,7 @@ public class PickUserViewModel extends ViewModel {
      *
      * @return
      */
-    public @NonNull
-    List<UIUserInfo> getCheckedUsers() {
+    public @NonNull List<UIUserInfo> getCheckedUsers() {
         List<UIUserInfo> checkedUsers = new ArrayList<>();
         if (users == null) {
             return checkedUsers;

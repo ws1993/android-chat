@@ -17,11 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
-import butterknife.OnClick;
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.R2;
 import cn.wildfire.chat.kit.contact.ContactViewModel;
 import cn.wildfire.chat.kit.user.UserViewModel;
 import cn.wildfirechat.model.FriendRequest;
@@ -34,34 +30,41 @@ public class FriendRequestViewHolder extends RecyclerView.ViewHolder {
     private UserViewModel userViewModel;
     private ContactViewModel contactViewModel;
 
-    @BindView(R2.id.portraitImageView)
     ImageView portraitImageView;
-    @BindView(R2.id.nameTextView)
     TextView nameTextView;
-    @BindView(R2.id.introTextView)
     TextView introTextView;
-    @BindView(R2.id.acceptButton)
     Button acceptButton;
-    @BindView(R2.id.acceptStatusTextView)
     TextView acceptStatusTextView;
 
     public FriendRequestViewHolder(FriendRequestListFragment fragment, FriendRequestListAdapter adapter, View itemView) {
         super(itemView);
         this.fragment = fragment;
         this.adapter = adapter;
-        ButterKnife.bind(this, itemView);
-        userViewModel =ViewModelProviders.of(fragment).get(UserViewModel.class);
+        bindViews(itemView);
+        bindEvents(itemView);
+        userViewModel = ViewModelProviders.of(fragment).get(UserViewModel.class);
         contactViewModel = ViewModelProviders.of(fragment).get(ContactViewModel.class);
     }
 
-    @OnClick(R2.id.acceptButton)
+    private void bindEvents(View itemView) {
+        itemView.findViewById(R.id.acceptButton).setOnClickListener(_v -> accept());
+    }
+
+    private void bindViews(View itemView) {
+        portraitImageView = itemView.findViewById(R.id.portraitImageView);
+        nameTextView = itemView.findViewById(R.id.nameTextView);
+        introTextView = itemView.findViewById(R.id.introTextView);
+        acceptButton = itemView.findViewById(R.id.acceptButton);
+        acceptStatusTextView = itemView.findViewById(R.id.acceptStatusTextView);
+    }
+
     void accept() {
-        contactViewModel.acceptFriendRequest(friendRequest.target).observe(fragment, aBoolean -> {
-            if (aBoolean) {
+        contactViewModel.acceptFriendRequest(friendRequest.target).observe(fragment, errorCode -> {
+            if (errorCode == 0) {
                 this.friendRequest.status = 1;
                 acceptButton.setVisibility(View.GONE);
             } else {
-                Toast.makeText(fragment.getActivity(), "操作失败", Toast.LENGTH_SHORT).show();
+                Toast.makeText(fragment.getActivity(), "接受好友请求失败, err = " + errorCode, Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -70,8 +73,8 @@ public class FriendRequestViewHolder extends RecyclerView.ViewHolder {
         this.friendRequest = friendRequest;
         UserInfo userInfo = userViewModel.getUserInfo(friendRequest.target, false);
 
-        if (userInfo != null && !TextUtils.isEmpty(userInfo.displayName)) {
-            nameTextView.setText(userInfo.displayName);
+        if (userInfo != null) {
+            nameTextView.setText(userViewModel.getUserDisplayNameEx(userInfo));
         } else {
             nameTextView.setText("<" + friendRequest.target + ">");
         }

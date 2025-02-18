@@ -22,11 +22,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.List;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
-import butterknife.OnClick;
 import cn.wildfire.chat.kit.R;
-import cn.wildfire.chat.kit.R2;
 import cn.wildfire.chat.kit.conversation.message.model.UiMessage;
 import cn.wildfire.chat.kit.viewmodel.MessageViewModel;
 import cn.wildfire.chat.kit.voip.conference.model.ConferenceInfo;
@@ -34,7 +30,6 @@ import cn.wildfirechat.model.Conversation;
 import cn.wildfirechat.remote.ChatManager;
 
 public class ConferenceMessageFragment extends Fragment {
-    @BindView(R2.id.messageRecyclerView)
     RecyclerView messageRecyclerView;
 
     private MessageViewModel messageViewModel;
@@ -48,25 +43,36 @@ public class ConferenceMessageFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.av_conference_message, container, false);
-        ButterKnife.bind(this, view);
+        bindViews(view);
+        bindEvents(view);
         messageViewModel = new ViewModelProvider(this).get(MessageViewModel.class);
         init();
         return view;
     }
 
+    private void bindEvents(View view) {
+        view.findViewById(R.id.inputTextView).setOnClickListener(_v -> showMessageInputFragment());
+    }
+
+    private void bindViews(View view) {
+        messageRecyclerView = view.findViewById(R.id.messageRecyclerView);
+    }
+
     private void init() {
-        messageViewModel.messageLiveData().observe(getViewLifecycleOwner(), new Observer<UiMessage>() {
+        messageViewModel.messageLiveData().observe(getViewLifecycleOwner(), new Observer<List<UiMessage>>() {
             @Override
-            public void onChanged(UiMessage uiMessage) {
-                if (uiMessage.message.messageId == 0) {
-                    return;
-                }
-                Conversation conversation = uiMessage.message.conversation;
-                ConferenceInfo conferenceInfo = ConferenceManager.getManager().getCurrentConferenceInfo();
-                if (conferenceInfo != null && conversation.type == Conversation.ConversationType.ChatRoom && conversation.line == 0 && conversation.target.equals(conferenceInfo.getConferenceId())) {
-                    if (!contains(uiMessage)) {
-                        messages.add(uiMessage);
-                        messageAdapter.notifyItemInserted(messages.size() - 1);
+            public void onChanged(List<UiMessage> uiMessages) {
+                for (UiMessage uiMessage : uiMessages) {
+                    if (uiMessage.message.messageId == 0 || uiMessage.message.content.notLoaded > 0) {
+                        return;
+                    }
+                    Conversation conversation = uiMessage.message.conversation;
+                    ConferenceInfo conferenceInfo = ConferenceManager.getManager().getCurrentConferenceInfo();
+                    if (conferenceInfo != null && conversation.type == Conversation.ConversationType.ChatRoom && conversation.line == 0 && conversation.target.equals(conferenceInfo.getConferenceId())) {
+                        if (!contains(uiMessage)) {
+                            messages.add(uiMessage);
+                            messageAdapter.notifyItemInserted(messages.size() - 1);
+                        }
                     }
                 }
             }
@@ -108,7 +114,6 @@ public class ConferenceMessageFragment extends Fragment {
         handler.postDelayed(this::checkMessageTimeout, TIMEOUT);
     }
 
-    @OnClick(R2.id.inputTextView)
     void showMessageInputFragment() {
         ((ConferenceActivity) getActivity()).showKeyboardDialogFragment();
     }
@@ -123,14 +128,17 @@ public class ConferenceMessageFragment extends Fragment {
     }
 
     static class TextMessageViewHolder extends MessageViewHolder {
-        @BindView(R2.id.senderTextView)
         TextView senderTextView;
-        @BindView(R2.id.messageContentTextView)
         TextView messageContentTextView;
 
         public TextMessageViewHolder(@NonNull View itemView) {
             super(itemView);
-            ButterKnife.bind(this, itemView);
+            bindViews(itemView);
+        }
+
+        private void bindViews(View itemView) {
+            senderTextView = itemView.findViewById(R.id.senderTextView);
+            messageContentTextView = itemView.findViewById(R.id.messageContentTextView);
         }
 
         @Override

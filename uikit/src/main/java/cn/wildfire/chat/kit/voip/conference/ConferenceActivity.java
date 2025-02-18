@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Pair;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -17,6 +18,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
+import androidx.lifecycle.Observer;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 
@@ -25,8 +27,10 @@ import org.webrtc.StatsReport;
 import java.util.List;
 
 import cn.wildfire.chat.kit.R;
+import cn.wildfire.chat.kit.livebus.LiveDataBus;
 import cn.wildfire.chat.kit.voip.VoipBaseActivity;
 import cn.wildfire.chat.kit.voip.conference.model.ConferenceInfo;
+import cn.wildfire.chat.kit.widget.AlertDialogActivity;
 import cn.wildfirechat.avenginekit.AVAudioManager;
 import cn.wildfirechat.avenginekit.AVEngineKit;
 import cn.wildfirechat.message.ConferenceInviteMessageContent;
@@ -36,6 +40,9 @@ public class ConferenceActivity extends VoipBaseActivity {
 
     private static final int REQUEST_CODE_ADD_PARTICIPANT = 102;
     private AVEngineKit.CallSessionCallback currentCallSessionCallback;
+
+    private Observer<Object> onRequestMuteObserver;
+    private Observer<Object> onCancelMuteAllObserver;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -47,6 +54,13 @@ public class ConferenceActivity extends VoipBaseActivity {
     @Override
     protected void onStop() {
         super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        LiveDataBus.unsubscribe("onRequestMute", onRequestMuteObserver);
+        LiveDataBus.unsubscribe("onCancelMuteAll", onCancelMuteAllObserver);
     }
 
     @Override
@@ -65,7 +79,11 @@ public class ConferenceActivity extends VoipBaseActivity {
         fragment = new ConferenceFragment();
         View decorView = getWindow().getDecorView();
         int uiOptions = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            uiOptions |= View.SYSTEM_UI_FLAG_IMMERSIVE;
+        }
         decorView.setSystemUiVisibility(uiOptions);
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             Window w = getWindow();
             w.setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
@@ -77,6 +95,61 @@ public class ConferenceActivity extends VoipBaseActivity {
             .add(R.id.mainLayoutContainer, fragment)
             .add(R.id.messageLayoutContainer, new ConferenceMessageFragment())
             .commit();
+
+        onRequestMuteObserver = o -> {
+            ConferenceManager manager = ConferenceManager.getManager();
+            Pair<Boolean, Boolean> value = (Pair<Boolean, Boolean>) o;
+            boolean audio = value.first;
+            boolean mute = value.second;
+            if (!mute) {
+                preventShowFloatingViewOnStop = true;
+                AlertDialogActivity.showAlterDialog(this, audio ? "主持人邀请你发言" : "主持人邀请你打开摄像头", false, "拒绝", "接受",
+                    () -> {
+                        preventShowFloatingViewOnStop = false;
+                        Toast.makeText(this, audio ? "你拒绝了发言邀请" : "你拒绝了打开摄像头邀请", Toast.LENGTH_SHORT).show();
+                    },
+                    () -> {
+                        preventShowFloatingViewOnStop = false;
+                        Toast.makeText(this, audio ? "你接受了发言邀请" : "你接受了打开摄像头邀请", Toast.LENGTH_SHORT).show();
+                        if (audio) {
+                            manager.muteAudio(false);
+                        } else {
+                            manager.muteVideo(false);
+                        }
+                    });
+            } else {
+                Toast.makeText(this, "主持人关闭了你的发言", Toast.LENGTH_SHORT).show();
+                if (audio) {
+                    manager.muteAudio(true);
+                } else {
+                    manager.muteVideo(true);
+                }
+            }
+        };
+        LiveDataBus.subscribeForever("onRequestMute", onRequestMuteObserver);
+        onCancelMuteAllObserver = o -> {
+            Pair<Boolean, Boolean> value = (Pair<Boolean, Boolean>) o;
+            boolean audio = value.first;
+            boolean requestUnmute = value.second;
+            ConferenceManager manager = ConferenceManager.getManager();
+            if (requestUnmute) {
+                preventShowFloatingViewOnStop = true;
+                AlertDialogActivity.showAlterDialog(this, audio ? "主持人关闭了全员静音，是否要打开麦克风" : "管理员取消了全体成员关闭摄像头，是否打开摄像头", false, "忽略", "打开",
+                    () -> {
+                        preventShowFloatingViewOnStop = false;
+                    },
+                    () -> {
+                        preventShowFloatingViewOnStop = false;
+                        if (audio) {
+                            manager.muteAudio(false);
+                        } else {
+                            manager.muteVideo(false);
+                        }
+                    });
+            }
+            Toast.makeText(this, "主持人关闭了全员静音", Toast.LENGTH_SHORT).show();
+        };
+        LiveDataBus.subscribe("onCancelMuteAll", this, onCancelMuteAllObserver);
     }
 
     public void showKeyboardDialogFragment() {
@@ -132,13 +205,25 @@ public class ConferenceActivity extends VoipBaseActivity {
                     finish();
                 }
             } else if (callEndReason == AVEngineKit.CallEndReason.RoomParticipantsFull) {
-                AVEngineKit.CallSession newSession = AVEngineKit.Instance().joinConference(callId, audioOnly, pin, host, title, desc, audience, advanced, false, false, this);
-                if (newSession == null) {
-                    Toast.makeText(this, "加入会议失败", Toast.LENGTH_SHORT).show();
-                    finish();
-                } else {
-                    newSession.setCallback(ConferenceActivity.this);
-                }
+                new MaterialDialog.Builder(this)
+                    .content("互动者已满，是否已观众模式加入会议")
+                    .negativeText("否")
+                    .positiveText("是")
+                    .onPositive((dialog, which) -> {
+                        finish();
+                        new Handler().postDelayed(() -> {
+                            AVEngineKit.CallSession newSession = AVEngineKit.Instance().joinConference(callId, audioOnly, pin, host, title, desc, true, advanced, false, false, this);
+                            if (newSession == null) {
+                                Toast.makeText(this, "加入会议失败", Toast.LENGTH_SHORT).show();
+                                finish();
+                            } else {
+                                Intent intent = new Intent(getApplicationContext(), ConferenceActivity.class);
+                                startActivity(intent);
+                            }
+                        }, 800);
+                    })
+                    .onNegative((dialog, which) -> finish())
+                    .show();
             } else if (!isFinishing()) {
                 ConferenceManager.getManager().addHistory(conferenceInfo, System.currentTimeMillis() - session.getStartTime());
                 finish();
@@ -243,15 +328,16 @@ public class ConferenceActivity extends VoipBaseActivity {
     }
 
     void showParticipantList() {
-        isInvitingNewParticipant = true;
+        preventShowFloatingViewOnStop = true;
         Intent intent = new Intent(this, ConferenceParticipantListActivity.class);
         startActivityForResult(intent, REQUEST_CODE_ADD_PARTICIPANT);
     }
 
     public void inviteNewParticipant() {
-        isInvitingNewParticipant = true;
+        preventShowFloatingViewOnStop = true;
         AVEngineKit.CallSession session = AVEngineKit.Instance().getCurrentSession();
-        ConferenceInviteMessageContent invite = new ConferenceInviteMessageContent(session.getCallId(), ConferenceManager.getManager().getCurrentConferenceInfo().getOwner(), session.getTitle(), session.getDesc(), session.getStartTime(), session.isAudioOnly(), session.isDefaultAudience(), session.isAdvanced(), session.getPin());
+        ConferenceInfo conferenceInfo = ConferenceManager.getManager().getCurrentConferenceInfo();
+        ConferenceInviteMessageContent invite = new ConferenceInviteMessageContent(session.getCallId(), ConferenceManager.getManager().getCurrentConferenceInfo().getOwner(), session.getTitle(), session.getDesc(), session.getStartTime(), session.isAudioOnly(), session.isDefaultAudience(), session.isAdvanced(), session.getPin(), conferenceInfo.getPassword());
         Intent intent = new Intent(this, ConferenceInviteActivity.class);
         intent.putExtra("inviteMessage", invite);
         startActivityForResult(intent, REQUEST_CODE_ADD_PARTICIPANT);
@@ -259,9 +345,11 @@ public class ConferenceActivity extends VoipBaseActivity {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
         if (requestCode == REQUEST_CODE_ADD_PARTICIPANT) {
-            isInvitingNewParticipant = false;
+            preventShowFloatingViewOnStop = false;
         }
     }
 }

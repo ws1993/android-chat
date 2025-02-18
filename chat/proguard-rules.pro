@@ -29,6 +29,7 @@
 
 -dontshrink
 -keep class org.webrtc.**  { *; }
+-keep class com.serenegiant.**  { *; }
 -keepclasseswithmembernames class * { native <methods>; }
 
 -keep class okhttp3.** {*;}
@@ -68,6 +69,11 @@
 
 -keep class cn.wildfirechat.model.** {*;}
 -keepclassmembers class cn.wildfirechat.model.** {
+  *;
+}
+
+-keep class cn.wildfire.chat.kit.organization.model.** {*;}
+-keepclassmembers class cn.wildfire.chat.kit.organization.model.** {
   *;
 }
 

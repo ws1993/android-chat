@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 
 import androidx.annotation.LayoutRes;
@@ -17,9 +18,12 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
-import butterknife.ButterKnife;
+import me.aurelion.x.ui.view.watermark.WaterMarkManager;
+import me.aurelion.x.ui.view.watermark.WaterMarkView;
 
 public abstract class WfcBaseNoToolbarActivity extends AppCompatActivity {
+
+    protected WaterMarkView mWmv;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -27,8 +31,20 @@ public abstract class WfcBaseNoToolbarActivity extends AppCompatActivity {
         this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         beforeViews();
         setContentView(contentLayout());
-        ButterKnife.bind(this);
         afterViews();
+
+        if (Config.ENABLE_WATER_MARK) {
+            mWmv = WaterMarkManager.getView(this);
+            ((ViewGroup) findViewById(android.R.id.content)).addView(mWmv);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (mWmv != null) {
+            mWmv.onDestroy();
+        }
+        super.onDestroy();
     }
 
     protected void hideInputMethod() {
@@ -55,7 +71,6 @@ public abstract class WfcBaseNoToolbarActivity extends AppCompatActivity {
     /**
      * {@link AppCompatActivity#setContentView(int)}之后调用
      * <p>
-     * 此时已经调用了{@link ButterKnife#bind(Activity)}, 子类里面不需要再次调用
      */
     protected void afterViews() {
 

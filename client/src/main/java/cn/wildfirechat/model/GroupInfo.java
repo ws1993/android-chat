@@ -51,6 +51,9 @@ public class GroupInfo implements Parcelable {
     public String extra;
     public String remark;
     public long updateDt;
+    // 群成员的最后更新日期，一般是没有什么作用，唯一的作用就是当用户退出群组后，再获取群组信息，memberDt会为负数。
+    // < -1 已退出群组；-1 未加入群组；>-1 已加入群组
+    public long memberDt;
 
 
     //0 正常；1 全局禁言
@@ -70,6 +73,12 @@ public class GroupInfo implements Parcelable {
 
     //群最大成员数。仅专业版有效
     public int maxMemberCount;
+
+    //是否是超级群组，0 普通群组；1 超级群组。超级群组不支持服务器端删除。
+    public int superGroup;
+
+    //群组是否被解散，0 没有被解散；1 已经被解散。
+    public int deleted;
 
     public GroupInfo() {
     }
@@ -91,12 +100,15 @@ public class GroupInfo implements Parcelable {
         dest.writeString(this.extra);
         dest.writeString(this.remark);
         dest.writeLong(this.updateDt);
+        dest.writeLong(this.memberDt);
         dest.writeInt(this.mute);
         dest.writeInt(this.joinType);
         dest.writeInt(this.privateChat);
         dest.writeInt(this.searchable);
         dest.writeInt(this.historyMessage);
         dest.writeInt(this.maxMemberCount);
+        dest.writeInt(this.superGroup);
+        dest.writeInt(this.deleted);
     }
 
     protected GroupInfo(Parcel in) {
@@ -110,12 +122,15 @@ public class GroupInfo implements Parcelable {
         this.extra = in.readString();
         this.remark = in.readString();
         this.updateDt = in.readLong();
+        this.memberDt = in.readLong();
         this.mute = in.readInt();
         this.joinType = in.readInt();
         this.privateChat = in.readInt();
         this.searchable = in.readInt();
         this.historyMessage = in.readInt();
         this.maxMemberCount = in.readInt();
+        this.superGroup = in.readInt();
+        this.deleted = in.readInt();
     }
 
     public static final Creator<GroupInfo> CREATOR = new Creator<GroupInfo>() {
